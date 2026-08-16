@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
+import 'diary_store.dart';
 import 'memory.dart';
+import 'profile.dart';
 
 class ChatMessage {
   String role; // 'user' | 'assistant'
@@ -11,7 +13,18 @@ class ChatMessage {
 }
 
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key});
+  final AiService ai;
+  final VectorMemory memory;
+  final UserProfile profile;
+  final DiaryStore diaryStore;
+  const ChatPage({
+    super.key,
+    required this.ai,
+    required this.memory,
+    required this.profile,
+    required this.diaryStore,
+  });
+
   @override
   State<ChatPage> createState() => _ChatPageState();
 }
@@ -19,8 +32,8 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _input = TextEditingController();
   final ScrollController _scroll = ScrollController();
-  final AiService _ai = AiService();
-  late final VectorMemory _memory = VectorMemory(_ai);
+  late final AiService _ai = widget.ai;
+  late final VectorMemory _memory = widget.memory;
   final List<ChatMessage> _messages = [
     ChatMessage('assistant', '你好，我是你的 AI 陪伴师。今天想聊聊什么？可以是当下的觉察、一个小目标，或者任何心事。'),
   ];
@@ -55,12 +68,13 @@ class _ChatPageState extends State<ChatPage> {
     List<String> memoryHits = const [],
     bool useAll = false,
   }) {
-    final msgs = <Map<String, String>>[
-      {
-        'role': 'system',
-        'content': '你是"显化的我"的AI成长陪伴师，融合心理学、教练技术与金刚智慧，引导用户觉察、设定目标、完成每日功课。语气温暖、简洁、有引导性，避免说教。'
-      },
-    ];
+    final msgs = <Map<String, String>>[];
+    final system = '你是"显化的我"的AI成长陪伴师，融合心理学、教练技术与金刚智慧，引导用户觉察、设定目标、完成每日功课。语气温暖、简洁、有引导性，避免说教。';
+    final profileCtx = widget.profile.buildSystemContext();
+    msgs.add({
+      'role': 'system',
+      'content': profileCtx.isEmpty ? system : '$system\n$profileCtx',
+    });
     if (!useAll && memoryHits.isNotEmpty) {
       for (final r in memoryHits) {
         msgs.add({'role': 'system', 'content': '【相关记忆】$r'});
@@ -95,11 +109,14 @@ class _ChatPageState extends State<ChatPage> {
       onDelta: (d) => setState(() => _messages[index].content += d),
       onDone: () async {
         if (!mounted) return;
-        setState(() => _thinking = false);
+        setState(() {
+          _thinking = false;
+        });
         _scrollToBottom();
         // 对话结束后把问答存进记忆，供之后检索。
-        await _memory.add(text);
-        await _memory.add(_messages[index].content);
+        await _memory.add(text, type: 'chat');
+        await _memory.add(_messages[index].content, type: 'chat');
+        if (mounted) setState(() {});
       },
       onError: (e) {
         if (!mounted) return;
@@ -171,7 +188,17 @@ class _ChatPageState extends State<ChatPage> {
         if (!mounted) return;
         setState(() => _thinking = false);
         _scrollToBottom();
-        await _memory.add(_messages[index].content);
+        final content = _messages[index].content.trim();
+        await widget.diaryStore.save(content);
+        await _memory.add(content, type: 'diary');
+        // 顺带从这次对话抽取事实/目标/价值观，合并进画像。
+        await widget.profile.extractFromConversation(_ai, history);
+        if (mounted) {
+          setState(() {});
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✓ 日记已保存到「日记」页')),
+          );
+        }
       },
       onError: (e) {
         if (!mounted) return;
@@ -229,6 +256,17 @@ class _ChatPageState extends State<ChatPage> {
               child: Text(
                 '⚠️ 未配置 API Key：flutter run --dart-define=ZHIPU_API_KEY=你的key',
                 style: TextStyle(color: Colors.orange, fontSize: 12),
+              ),
+            ),
+          if (_memory.length > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '🧠 已记住 ${_memory.length} 条',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                ),
               ),
             ),
           _inputBar(),

@@ -69,6 +69,37 @@ class AiService {
     }
   }
 
+  /// 非流式完整回复（画像抽取等一次性调用）。失败返回空串。
+  Future<String> complete(List<Map<String, String>> messages) async {
+    if (!hasKey) return '';
+    final client = http.Client();
+    try {
+      final response = await client
+          .post(
+            Uri.parse(_base),
+            headers: {
+              'Authorization': 'Bearer $_apiKey',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': _model,
+              'messages': messages,
+              'temperature': 0.3,
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (response.statusCode != 200) return '';
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final choices = json['choices'] as List?;
+      if (choices == null || choices.isEmpty) return '';
+      final msg = (choices.first as Map<String, dynamic>)['message'];
+      if (msg is Map<String, dynamic>) return msg['content'] as String? ?? '';
+      return '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   /// 文本转向量（智谱 embedding-2）。
   Future<List<double>?> embed(String text) async {
     if (!hasKey) return null;

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ai_diary_demo/memory.dart';
 
@@ -22,5 +23,28 @@ void main() {
 
   test('cosineSimilarity：维度不一致返回 0', () {
     expect(cosineSimilarity([1.0], [1.0, 0.0]), 0);
+  });
+
+  test('MemoryItem JSON 往返一致', () {
+    final it = MemoryItem('你好', [1.0, 2.0], time: 1000, type: 'diary');
+    final back =
+        MemoryItem.fromJson(jsonDecode(jsonEncode(it.toJson())) as Map<String, dynamic>);
+    expect(back.text, '你好');
+    expect(back.vector, [1.0, 2.0]);
+    expect(back.time, 1000);
+    expect(back.type, 'diary');
+  });
+
+  test('MemoryItem 默认 time/type', () {
+    final it = MemoryItem('x', [0.5]);
+    expect(it.type, 'chat');
+    expect(it.time, greaterThan(0));
+  });
+
+  test('timeDecay：现在 = 1，半衰期后 = 0.5', () {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    expect(VectorMemory.timeDecay(now), closeTo(1.0, 1e-9));
+    final weekAgo = now - const Duration(days: 7).inMilliseconds;
+    expect(VectorMemory.timeDecay(weekAgo), closeTo(0.5, 1e-9));
   });
 }
