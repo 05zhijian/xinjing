@@ -1,16 +1,69 @@
-# ai_diary_demo
+# 心镜 · AI 陪伴日记（Flutter）
 
-A new Flutter project.
+一个带 **三层记忆架构** 的 AI 陪伴日记 App：对话会被记忆，并且记忆会「成长」——从原始记录沉淀为对用户的长期认知。
 
-## Getting Started
+> 核心亮点：把 LLM 的记忆从「全部历史拼 prompt」升级为「工作 / 情景 / 语义」三层架构 + 记忆整合升华，解决上下文失控、遗忘、个性化三个问题。
 
-This project is a starting point for a Flutter application.
+## 三层记忆架构
 
-A few resources to get you started if this is your first Flutter project:
+```
+┌────────────────────────────────────────────────────┐
+│            LayeredMemory（编排器）                   │
+│                                                    │
+│  ┌──────────────────────────────────────────────┐  │
+│  │ L1 工作记忆  WorkingMemory                   │  │  会话窗口 · 易失
+│  │    最近 N 条消息（环形缓冲，maxWindow=20）     │  │  不持久化
+│  └──────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────┐  │
+│  │ L2 情景记忆  EpisodicMemory（向量化）         │  │  原始记录 · memories.json
+│  │    类型 chat / diary / insight                │  │  余弦相似度 × 时间衰减
+│  └──────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────┐  │
+│  │ L3 语义记忆  SemanticMemory（画像）           │  │  抽取画像 · profile.json
+│  │    goals / values / facts                     │  │  恒定注入，不遗忘
+│  └──────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────┘
+       ▲ 写入流                            ▼ 读取流
+  对话/日记 → L2 情景层                 L3 恒定注入
+  L2 整合 → L3 语义层                  L1 最近 + L2 语义检索合并
+```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## 记忆怎么流动
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+**写入**：工作层在会话中实时记录每轮对话；对话/日记在对话结束后向量化写入情景层。
+
+**读取（recall）**：每次回复前做多级检索，三层合并后注入模型——
+
+| 层 | 注入方式 | 条数控制 |
+|---|---|---|
+| L3 语义画像 | system 首段 | 画像本身精简 |
+| L2 相关记忆 | system `【相关记忆】` | topK=5，相似度 ≥ 0.2 |
+| L1 最近对话 | 对话历史 | 最近 12 轮 |
+
+**整合（consolidate）**：生成日记后，让模型把本次对话抽取为画像（goals/values/facts）合并进语义层，并压缩成一句洞察写回情景层——**记忆从「原始记录」升华为「长期认知」**，而不是一直堆原始文本。
+
+## 三个设计取舍
+
+1. **为什么分层**：全部历史拼 prompt 会随对话增长而失控；分层让「上下文总量可控」——画像精、检索限 topK、工作限轮次。
+2. **为什么本地向量检索**：情景层用字符 n-gram 哈希成特征向量（自包含、不限流、确定性可测），按余弦相似度匹配「共享主题词」的历史（如「体重」同时出现在当前问题与旧回复中）——比纯关键词匹配更稳，又不依赖外部嵌入 API。
+3. **为什么时间衰减**：近记忆比远记忆更有用，余弦相似度乘半衰期衰减（默认 7 天）让近期记忆优先。
+
+## 技术栈
+
+Flutter 3.32 / Dart · DeepSeek v4-flash（流式对话）+ 本地 n-gram 哈希嵌入（自包含、不限流）· JSON 持久化 · 纯函数检索可单测
+
+## 测试
+
+37 个测试全绿（`flutter test`），覆盖：
+- `memory_test`：余弦相似度、时间衰减、localEmbed 确定性/相关度、JSON 往返
+- `layered_memory_test`：三层 recall 合并、consolidate 去重/洞察写回、各层兜底
+- `working_memory_test`：环形缓冲淘汰、最近轮次
+- `profile_test` / `practice_test` / `diary_store_test` / `widget_test`
+
+## 运行
+
+```bash
+flutter run --dart-define=DEEPSEEK_API_KEY=你的DeepSeekKey
+```
+
+详细设计见 [AI_Diary_DevDoc.md](AI_Diary_DevDoc.md)。

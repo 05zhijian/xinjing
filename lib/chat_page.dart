@@ -3,8 +3,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
 import 'diary_store.dart';
-import 'memory.dart';
-import 'profile.dart';
+import 'layered_memory.dart';
 
 class ChatMessage {
   String role; // 'user' | 'assistant'
@@ -14,14 +13,12 @@ class ChatMessage {
 
 class ChatPage extends StatefulWidget {
   final AiService ai;
-  final VectorMemory memory;
-  final UserProfile profile;
+  final LayeredMemory memory;
   final DiaryStore diaryStore;
   const ChatPage({
     super.key,
     required this.ai,
     required this.memory,
-    required this.profile,
     required this.diaryStore,
   });
 
@@ -33,7 +30,7 @@ class _ChatPageState extends State<ChatPage> {
   final TextEditingController _input = TextEditingController();
   final ScrollController _scroll = ScrollController();
   late final AiService _ai = widget.ai;
-  late final VectorMemory _memory = widget.memory;
+  late final LayeredMemory _memory = widget.memory;
   final List<ChatMessage> _messages = [
     ChatMessage('assistant', '你好，我是你的 AI 陪伴师。今天想聊聊什么？可以是当下的觉察、一个小目标，或者任何心事。'),
   ];
@@ -62,29 +59,26 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   /// 组装给模型的 messages。
-  /// [memoryHits] = 向量检索出的相关历史（注入为 system 背景，控制上下文长度）；
-  /// [useAll] = true 时不用检索、拼全部历史（生成日记时用）。
+  /// 三层记忆各自注入：L3 语义画像进 system 首段，L2 相关记忆进 system【相关记忆】，
+  /// L1 工作记忆作为对话历史。[useAll] = true 时拼全部历史（生成日记用，不注入相关记忆）。
   List<Map<String, String>> _buildHistory({
+    required List<Map<String, String>> dialogue,
+    String semanticContext = '',
     List<String> memoryHits = const [],
     bool useAll = false,
   }) {
     final msgs = <Map<String, String>>[];
-    final system = '你是"显化的我"的AI成长陪伴师，融合心理学、教练技术与金刚智慧，引导用户觉察、设定目标、完成每日功课。语气温暖、简洁、有引导性，避免说教。';
-    final profileCtx = widget.profile.buildSystemContext();
+    final system = '你是"心镜"的AI成长陪伴师，融合心理学、教练技术与金刚智慧，引导用户觉察、设定目标、完成每日功课。语气温暖、简洁、有引导性，避免说教。';
     msgs.add({
       'role': 'system',
-      'content': profileCtx.isEmpty ? system : '$system\n$profileCtx',
+      'content': semanticContext.isEmpty ? system : '$system\n$semanticContext',
     });
     if (!useAll && memoryHits.isNotEmpty) {
       for (final r in memoryHits) {
         msgs.add({'role': 'system', 'content': '【相关记忆】$r'});
       }
     }
-    final recent =
-        _messages.length > 12 ? _messages.sublist(_messages.length - 12) : _messages;
-    for (final m in recent) {
-      if (m.content.isNotEmpty) msgs.add({'role': m.role, 'content': m.content});
-    }
+    msgs.addAll(dialogue);
     return msgs;
   }
 
@@ -100,12 +94,21 @@ class _ChatPageState extends State<ChatPage> {
     _scrollToBottom();
     final index = _messages.length - 1;
 
-    // 向量记忆：先用当前问题检索最相关的历史（不含刚发的那条）。
-    final hits = _memory.hasItems ? await _memory.search(text) : <String>[];
+    // L1 工作记忆实时记录当前问题；L2 情景层此时尚未入库，检索不会命中它自身。
+    _memory.noteTurn('user', text);
+    final recall = await _memory.recall(text);
     if (!mounted) return;
 
+    final dialogue = [
+      for (final t in recall.working)
+        {'role': t.role, 'content': t.content},
+    ];
     await _ai.chat(
-      _buildHistory(memoryHits: hits),
+      _buildHistory(
+        dialogue: dialogue,
+        semanticContext: recall.semanticContext,
+        memoryHits: recall.episodicHits,
+      ),
       onDelta: (d) => setState(() => _messages[index].content += d),
       onDone: () async {
         if (!mounted) return;
@@ -113,13 +116,15 @@ class _ChatPageState extends State<ChatPage> {
           _thinking = false;
         });
         _scrollToBottom();
-        // 对话结束后把问答存进记忆，供之后检索。
-        await _memory.add(text, type: 'chat');
-        await _memory.add(_messages[index].content, type: 'chat');
+        // 对话结束后：工作层记 assistant 轮次，情景层持久化原始问答。
+        _memory.noteTurn('assistant', _messages[index].content);
+        await _memory.remember(text, type: 'chat');
+        await _memory.remember(_messages[index].content, type: 'chat');
         if (mounted) setState(() {});
       },
       onError: (e) {
         if (!mounted) return;
+        debugPrint('[chat] send onError: $e');
         setState(() {
           _messages[index].content = '⚠️ $e';
           _thinking = false;
@@ -139,7 +144,7 @@ class _ChatPageState extends State<ChatPage> {
           controller: controller,
           autofocus: true,
           decoration: const InputDecoration(
-            hintText: '粘贴你的智谱 API Key',
+            hintText: '粘贴你的 DeepSeek API Key',
             border: OutlineInputBorder(),
           ),
         ),
@@ -176,7 +181,16 @@ class _ChatPageState extends State<ChatPage> {
     });
     _scrollToBottom();
     final index = _messages.length - 1;
-    final history = _buildHistory(useAll: true);
+    // 全量回顾本次会话（工作记忆的完整上下文），生成结构化日记。
+    final dialogue = [
+      for (final m in _messages)
+        if (m.content.isNotEmpty) {'role': m.role, 'content': m.content},
+    ];
+    final history = _buildHistory(
+      dialogue: dialogue,
+      semanticContext: _memory.semanticContext,
+      useAll: true,
+    );
     history[0] = {
       'role': 'system',
       'content': '根据用户和你的对话内容，生成一份结构化觉察日记，包含【今日觉察】【今日收获】【明日功课】。语言真诚、口语化、不空洞，150字以内，只输出日记正文。',
@@ -190,9 +204,9 @@ class _ChatPageState extends State<ChatPage> {
         _scrollToBottom();
         final content = _messages[index].content.trim();
         await widget.diaryStore.save(content);
-        await _memory.add(content, type: 'diary');
-        // 顺带从这次对话抽取事实/目标/价值观，合并进画像。
-        await widget.profile.extractFromConversation(_ai, history);
+        await _memory.remember(content, type: 'diary');
+        // 记忆整合升华：抽取画像进语义层 + 洞察写回情景层。
+        await _memory.consolidate(_ai, history);
         if (mounted) {
           setState(() {});
           ScaffoldMessenger.of(context).showSnackBar(
@@ -225,7 +239,7 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('显化的我 · AI 陪伴'),
+        title: const Text('心镜 · AI 陪伴'),
         centerTitle: true,
         actions: [
           IconButton(
@@ -254,17 +268,18 @@ class _ChatPageState extends State<ChatPage> {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 12),
               child: Text(
-                '⚠️ 未配置 API Key：flutter run --dart-define=ZHIPU_API_KEY=你的key',
+                '⚠️ 未配置 API Key：flutter run --dart-define=DEEPSEEK_API_KEY=你的key',
                 style: TextStyle(color: Colors.orange, fontSize: 12),
               ),
             ),
-          if (_memory.length > 0)
+          if (_memory.stats()['episodic']! > 0)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  '🧠 已记住 ${_memory.length} 条',
+                  '🧠 情景 ${_memory.stats()['episodic']} 条 · '
+                  '画像 ${_memory.stats()['semantic']} 条',
                   style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
                 ),
               ),

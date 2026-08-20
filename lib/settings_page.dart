@@ -24,7 +24,7 @@ class _SettingsPageState extends State<SettingsPage> {
           controller: controller,
           autofocus: true,
           decoration: const InputDecoration(
-            hintText: '粘贴你的智谱 API Key',
+            hintText: '粘贴你的 DeepSeek API Key',
             border: OutlineInputBorder(),
           ),
         ),

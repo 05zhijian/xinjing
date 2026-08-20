@@ -47,4 +47,21 @@ void main() {
     final weekAgo = now - const Duration(days: 7).inMilliseconds;
     expect(VectorMemory.timeDecay(weekAgo), closeTo(0.5, 1e-9));
   });
+
+  test('localEmbed：确定性、维度固定、空文本零向量', () {
+    final v1 = localEmbed('我想减肥');
+    final v2 = localEmbed('我想减肥');
+    expect(v1, v2);
+    expect(v1.length, 256);
+    expect(localEmbed(''), everyElement(0.0));
+    expect(v1.any((x) => x > 0), isTrue);
+  });
+
+  test('localEmbed：相似文本余弦高、无关文本余弦低', () {
+    final related = cosineSimilarity(localEmbed('我想减肥'), localEmbed('最近想减肥'));
+    final unrelated =
+        cosineSimilarity(localEmbed('我想减肥'), localEmbed('宇宙飞船发射成功'));
+    expect(related, greaterThan(unrelated));
+    expect(unrelated, lessThan(0.3));
+  });
 }

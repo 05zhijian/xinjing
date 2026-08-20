@@ -5,6 +5,7 @@ import 'ai_service.dart';
 import 'chat_page.dart';
 import 'diaries_page.dart';
 import 'diary_store.dart';
+import 'layered_memory.dart';
 import 'memory.dart';
 import 'practice.dart';
 import 'practice_page.dart';
@@ -22,8 +23,10 @@ class AiDiaryApp extends StatefulWidget {
 
 class _AiDiaryAppState extends State<AiDiaryApp> {
   final AiService _ai = AiService();
-  late final VectorMemory _memory = VectorMemory(_ai);
+  late final VectorMemory _episodic = VectorMemory();
   late final UserProfile _profile = UserProfile();
+  late final LayeredMemory _memory =
+      LayeredMemory(episodic: _episodic, semantic: _profile);
   late final DiaryStore _diaryStore = DiaryStore();
   late final PracticeData _practice = PracticeData();
   int _tab = 0;
@@ -40,12 +43,12 @@ class _AiDiaryAppState extends State<AiDiaryApp> {
       final dir = await getApplicationDocumentsDirectory();
       final dataDir = Directory('${dir.path}/xianhuadewo');
       await dataDir.create(recursive: true);
-      _memory.attach(File('${dataDir.path}/memories.json'));
+      _episodic.attach(File('${dataDir.path}/memories.json'));
       _profile.attach(File('${dataDir.path}/profile.json'));
       _diaryStore.attach(Directory('${dataDir.path}/diaries'));
       _practice.attach(File('${dataDir.path}/practice.json'));
       await Future.wait([
-        _memory.load(),
+        _episodic.load(),
         _profile.load(),
         _practice.load(),
       ]);
@@ -58,7 +61,7 @@ class _AiDiaryAppState extends State<AiDiaryApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '显化的我 Demo',
+      title: '心镜',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorSchemeSeed: const Color(0xFF5C8A6E),
@@ -71,7 +74,6 @@ class _AiDiaryAppState extends State<AiDiaryApp> {
             ChatPage(
               ai: _ai,
               memory: _memory,
-              profile: _profile,
               diaryStore: _diaryStore,
             ),
             PracticePage(data: _practice),
