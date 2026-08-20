@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'ai_service.dart';
 
 /// 用户画像（L2 语义记忆）：目标 / 在意 / 事实。
@@ -98,12 +99,28 @@ class UserProfile {
       ...messages,
     ];
     final raw = await ai.complete(prompt);
-    final extracted = parseJson(raw);
+    var extracted = parseJson(raw);
+    if (extracted == null) {
+      debugPrint('[profile] extract 首次解析失败，raw=${_clip(raw)}');
+      // 推理模型有时把 JSON 包在解释/代码块里，追加严格指令重试一次。
+      final retry = await ai.complete([
+        ...prompt,
+        {'role': 'user', 'content': '直接输出 JSON 对象本身，不要任何解释、代码块或多余文字。'},
+      ]);
+      extracted = parseJson(retry);
+      if (extracted == null) {
+        debugPrint('[profile] extract 重试仍失败，retry=${_clip(retry)}');
+      }
+    }
     if (extracted == null) return false;
     merge(extracted);
     await save();
     return true;
   }
+
+  /// 截断超长字符串供日志打印。
+  static String _clip(String s, {int max = 400}) =>
+      s.length <= max ? s : '${s.substring(0, max)}…';
 
   /// 从回复里取出第一个 JSON 对象（容忍模型带前后缀文本）。
   static UserProfile? parseJson(String raw) {

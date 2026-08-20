@@ -153,6 +153,8 @@
 踩坑记录：
 - Android 集成测试里第二次 `tester.enterText` 可能因输入通道未重连而静默失败 → 改用 `typeChat` 直接设 controller 文本。
 - 智谱 embedding 免费额度在模拟器高频调用下随机 429 → 换 DeepSeek（不限流）+ 本地嵌入。
+- `testWidgets` 默认 30s 超时不够真实 AI 流式 + consolidate 两次非流式调用 → 全流程测试加 `timeout: Timeout(minutes: 5)`。
+- **DeepSeek 推理模型截断坑**：`deepseek-v4-flash` 是推理模型，非流式响应把输出 token 优先给 `reasoning_content`；不设 `max_tokens` 时真实 `content`（如画像 JSON）可能被截断成 `{"goals":["` 这样的残缺 JSON，`parseJson` 静默失败 → 画像 0 条。修复：`complete()` 加 `max_tokens=2048` + 90s 超时，`extractFromConversation` 解析失败时用更严格 prompt 重试一次。
 
 验证命令：`cd ai_diary_demo && flutter analyze && flutter test`
 集成测试：`flutter test integration_test/app_test.dart -d emulator-5554 --dart-define=DEEPSEEK_API_KEY=你的key`

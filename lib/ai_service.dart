@@ -116,7 +116,15 @@ class AiService {
           'Authorization': 'Bearer $_apiKey',
           'Content-Type': 'application/json',
         },
-        body: {'model': _model, 'messages': messages, 'temperature': 0.3},
+        body: {
+          'model': _model,
+          'messages': messages,
+          'temperature': 0.3,
+          // deepseek-v4-flash 是推理模型：输出 token 会被 reasoning_content
+          // 大量消耗，不给足 max_tokens 会让真实 content 截断成残缺 JSON。
+          'max_tokens': 2048,
+        },
+        timeout: const Duration(seconds: 90),
       );
       if (response.statusCode != 200) return '';
       final json = jsonDecode(response.body) as Map<String, dynamic>;
