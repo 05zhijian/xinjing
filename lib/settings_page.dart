@@ -1,55 +1,30 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'ai_service.dart';
+import 'avatar_page.dart';
+import 'avatar_renderer.dart';
 import 'profile.dart';
 
-/// 我的页：API Key 设置 + 画像（L2）查看与手动补充。
+/// 我的页：镜灵入口 + AI 对你的了解（画像）查看与手动补充。
+/// API Key 与服务商配置已上收到全局右上角 ⚙️（ai_settings_page.dart）。
 class SettingsPage extends StatefulWidget {
-  final AiService ai;
   final UserProfile profile;
-  const SettingsPage({super.key, required this.ai, required this.profile});
+  final AvatarService avatar;
+  const SettingsPage({
+    super.key,
+    required this.profile,
+    required this.avatar,
+  });
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  Future<void> _setKeyDialog() async {
-    final controller = TextEditingController(text: widget.ai.apiKey);
-    final key = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('设置 AI Key'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '粘贴你的 DeepSeek API Key',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+  /// 进入全屏化身页；返回后刷新顶部卡片。
+  Future<void> _openAvatar() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => AvatarPage(service: widget.avatar)),
     );
-    if (key != null && key.isNotEmpty) {
-      widget.ai.setApiKey(key);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('api_key', key);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.ai.hasKey ? '✓ Key 已保存' : 'Key 为空，未生效')),
-        );
-      }
-    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _addItem(String section) async {
@@ -98,36 +73,10 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final p = widget.profile;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('我的'),
-        centerTitle: true,
-      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Card(
-            elevation: 0,
-            color: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.grey.shade200),
-            ),
-            child: ListTile(
-              leading: const Icon(Icons.key),
-              title: Text(
-                widget.ai.hasKey ? 'AI Key 已配置' : '未配置 AI Key',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              subtitle: Text(
-                widget.ai.hasKey
-                    ? '…${widget.ai.apiKey.substring(widget.ai.apiKey.length > 6 ? widget.ai.apiKey.length - 6 : 0)}'
-                    : '在聊天页也可配置',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _setKeyDialog,
-            ),
-          ),
+          AvatarCard(service: widget.avatar, onTap: _openAvatar),
           const SizedBox(height: 16),
           Text('AI 对你的了解',
               style: Theme.of(context)

@@ -12,6 +12,39 @@ class AiService {
   static const String _base = 'https://api.deepseek.com/chat/completions';
   static const String _model = 'deepseek-v4-flash';
 
+  /// 文本服务商：DeepSeek / 智谱（GLM+CogView）。共用同一个 key 配置，
+  /// 满足「别人填一个 key 全通」的分发需求（DevDoc §十二-5）。
+  static const String kDeepSeek = 'deepseek';
+  static const String kZhipu = 'zhipu';
+  static const List<String> providers = [kDeepSeek, kZhipu];
+
+  static const String _zhipuBase =
+      'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+  static const String _zhipuModel = 'glm-4-flash';
+  static const String _zhipuImageBase =
+      'https://open.bigmodel.cn/api/paas/v4/images/generations';
+  static const String _zhipuImageModel = 'cogview-3-flash';
+  static const String _zhipuEnvKey = String.fromEnvironment('ZHIPU_API_KEY');
+  static const String _envProvider =
+      String.fromEnvironment('AI_PROVIDER', defaultValue: kDeepSeek);
+
+  String _provider = providers.contains(_envProvider) ? _envProvider : kDeepSeek;
+
+  /// 当前服务商。切换后按需生效（每次请求现取，不缓存）。
+  String get provider => _provider;
+  void setProvider(String p) {
+    if (providers.contains(p)) _provider = p;
+  }
+
+  /// 智谱在文本之外提供 CogView 生图。
+  bool get supportsImages => provider == kZhipu;
+  String? get imageBase => supportsImages ? _zhipuImageBase : null;
+  String? get imageModel => supportsImages ? _zhipuImageModel : null;
+
+  /// 对话端点与模型按服务商取值。
+  String get chatBase => provider == kZhipu ? _zhipuBase : _base;
+  String get chatModel => provider == kZhipu ? _zhipuModel : _model;
+
   /// 瞬态错误最大尝试次数（含首次）。
   static const int maxAttempts = 3;
   static const Duration _backoffBase = Duration(milliseconds: 1000);
@@ -19,8 +52,12 @@ class AiService {
 
   String? _runtimeKey; // 界面填的 key，优先于编译注入
 
-  /// 实际生效的 key：运行时填的优先，否则编译注入的。
-  String get _apiKey => _runtimeKey ?? _envKey;
+  /// 实际生效的 key：运行时填的优先；否则按所选服务商取编译注入的 key。
+  String get _apiKey {
+    final k = _runtimeKey;
+    if (k != null && k.isNotEmpty) return k;
+    return provider == kZhipu ? _zhipuEnvKey : _envKey;
+  }
 
   bool get hasKey => _apiKey.isNotEmpty;
 
@@ -49,11 +86,11 @@ class AiService {
       var delay = _backoffBase;
       for (var attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          final request = http.Request('POST', Uri.parse(_base))
+          final request = http.Request('POST', Uri.parse(chatBase))
             ..headers['Authorization'] = 'Bearer $_apiKey'
             ..headers['Content-Type'] = 'application/json'
             ..body = jsonEncode({
-              'model': _model,
+              'model': chatModel,
               'messages': messages,
               'stream': true,
               'temperature': 0.7,
@@ -111,13 +148,13 @@ class AiService {
     try {
       final response = await _postWithRetry(
         client,
-        Uri.parse(_base),
+        Uri.parse(chatBase),
         headers: {
           'Authorization': 'Bearer $_apiKey',
           'Content-Type': 'application/json',
         },
         body: {
-          'model': _model,
+          'model': chatModel,
           'messages': messages,
           'temperature': 0.3,
           // deepseek-v4-flash 是推理模型：输出 token 会被 reasoning_content

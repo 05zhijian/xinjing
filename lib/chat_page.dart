@@ -23,10 +23,10 @@ class ChatPage extends StatefulWidget {
   });
 
   @override
-  State<ChatPage> createState() => _ChatPageState();
+  State<ChatPage> createState() => ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class ChatPageState extends State<ChatPage> {
   final TextEditingController _input = TextEditingController();
   final ScrollController _scroll = ScrollController();
   late final AiService _ai = widget.ai;
@@ -42,10 +42,15 @@ class _ChatPageState extends State<ChatPage> {
     _loadSavedKey();
   }
 
-  /// 启动时从本地恢复保存的 key。
+  /// 启动时恢复本地配置：只有显式选过服务商，才恢复它配套的 key；
+  /// 否则保持编译期配置（--dart-define 的 AI_PROVIDER / ZHIPU_API_KEY），
+  /// 避免旧 DeepSeek key 污染智谱会话。
   Future<void> _loadSavedKey() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final p = prefs.getString('ai_provider');
+      if (p == null) return;
+      _ai.setProvider(p);
       final k = prefs.getString('api_key');
       if (k != null && k.isNotEmpty) _ai.setApiKey(k);
     } catch (_) {}
@@ -133,45 +138,6 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  /// 弹窗让用户填/改 AI Key，保存到本地。
-  Future<void> _setKeyDialog() async {
-    final controller = TextEditingController(text: _ai.apiKey);
-    final key = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('设置 AI Key'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '粘贴你的 DeepSeek API Key',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-    if (key != null && key.isNotEmpty) {
-      _ai.setApiKey(key);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('api_key', key);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_ai.hasKey ? '✓ Key 已保存' : 'Key 为空，未生效')),
-        );
-      }
-    }
-  }
-
   /// 把今天的对话生成结构化觉察日记（用全部历史，不检索）。
   void _generateDiary() async {
     if (_thinking) return;
@@ -224,6 +190,9 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  /// 供壳层 AppBar 右上角 ✨ 触发（真实动作仍在页内维护 _thinking 状态）。
+  void generateDiary() => _generateDiary();
+
   void _scrollToBottom() {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (!_scroll.hasClients) return;
@@ -238,22 +207,6 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('心镜 · AI 陪伴'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            tooltip: '设置 AI Key',
-            icon: const Icon(Icons.key),
-            onPressed: _setKeyDialog,
-          ),
-          IconButton(
-            tooltip: '生成今日觉察日记',
-            icon: const Icon(Icons.auto_awesome),
-            onPressed: _thinking ? null : _generateDiary,
-          ),
-        ],
-      ),
       body: Column(
         children: [
           Expanded(

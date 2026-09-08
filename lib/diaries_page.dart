@@ -7,10 +7,10 @@ class DiariesPage extends StatefulWidget {
   const DiariesPage({super.key, required this.store});
 
   @override
-  State<DiariesPage> createState() => _DiariesPageState();
+  State<DiariesPage> createState() => DiariesPageState();
 }
 
-class _DiariesPageState extends State<DiariesPage> {
+class DiariesPageState extends State<DiariesPage> {
   List<DiaryEntry> _entries = [];
 
   @override
@@ -25,20 +25,12 @@ class _DiariesPageState extends State<DiariesPage> {
     setState(() => _entries = entries);
   }
 
+  /// 供壳层 AppBar 右上角刷新触发。
+  void refresh() => _refresh();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('觉察日记'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            tooltip: '刷新',
-            icon: const Icon(Icons.refresh),
-            onPressed: _refresh,
-          ),
-        ],
-      ),
       body: _entries.isEmpty
           ? const Center(
               child: Padding(
