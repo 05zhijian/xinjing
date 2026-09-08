@@ -423,8 +423,7 @@ class _AvatarPageState extends State<AvatarPage> {
   }
 
   Widget _entryTile(AvatarEntry e) {
-    final d = DateTime.fromMillisecondsSinceEpoch(e.ts);
-    final date = '${d.year}/${d.month}/${d.day} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
+    final date = _fmt(e.ts);
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 6),
@@ -435,6 +434,7 @@ class _AvatarPageState extends State<AvatarPage> {
       ),
       child: ListTile(
         dense: true,
+        onTap: () => _showEntry(e),
         leading: AvatarArt(spec: e.spec, imagePath: e.imagePath, size: 40),
         title: Text('${e.spec.being.species} · $date',
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
@@ -444,6 +444,81 @@ class _AvatarPageState extends State<AvatarPage> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+        trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+      ),
+    );
+  }
+
+  String _fmt(int ts) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ts);
+    return '${d.year}/${d.month}/${d.day} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// 点开一条演化史：大图 + 当次的完整画面说明。
+  void _showEntry(AvatarEntry e) {
+    final s = e.spec;
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.all(24),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              AvatarArt(spec: s, imagePath: e.imagePath, size: 260),
+              const SizedBox(height: 14),
+              Text('${s.being.species} · ${_fmt(e.ts)}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final t in s.being.essence)
+                    Chip(
+                      label: Text(t, style: const TextStyle(fontSize: 12)),
+                      visualDensity: VisualDensity.compact,
+                      backgroundColor: const Color(0xFFF2F6F0),
+                      side: BorderSide.none,
+                    ),
+                ],
+              ),
+              if (s.being.reason.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(s.being.reason,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 13, height: 1.6, color: Colors.grey.shade700)),
+              ],
+              const SizedBox(height: 10),
+              if (_sceneLine(s).isNotEmpty) _dimLine('场景 · ${_sceneLine(s)}'),
+              if (s.scene.props.isNotEmpty)
+                _dimLine('身旁 · ${s.scene.props.join('、')}'),
+              const SizedBox(height: 6),
+              if (s.stateNote.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF2F6F0),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(s.stateNote,
+                      style: const TextStyle(fontSize: 13, height: 1.5)),
+                ),
+              const SizedBox(height: 4),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('关闭'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
