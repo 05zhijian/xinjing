@@ -131,4 +131,30 @@ void main() {
     expect(store.current, isNull);
     expect(store.history, isEmpty);
   });
+
+  test('store：反馈增删 / 上限 / 持久化往返', () async {
+    final dir = await Directory.systemTemp.createTemp('avatar_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = File('${dir.path}/avatar.json');
+
+    final store = AvatarStore()..attach(file);
+    store.addFeedback('别这么阴郁');
+    store.addFeedback('我更喜欢豹一点');
+    expect(store.feedback.first.text, '我更喜欢豹一点'); // 最新在前
+    store.removeFeedbackAt(1);
+    expect(store.feedback.length, 1);
+    await store.save();
+
+    // 超上限裁掉最旧
+    for (var i = 0; i < 25; i++) {
+      store.addFeedback('反馈$i');
+    }
+    expect(store.feedback.length, AvatarStore.maxFeedback);
+
+    // 往返一致
+    final store2 = AvatarStore()..attach(file);
+    await store2.load();
+    expect(store2.feedback.length, 1);
+    expect(store2.feedback.first.text, '我更喜欢豹一点');
+  });
 }

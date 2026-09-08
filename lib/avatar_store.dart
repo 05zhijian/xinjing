@@ -25,11 +25,26 @@ class AvatarEntry {
       );
 }
 
-/// 镜灵持久化：avatar.json = 当前 spec + 显化历史。
+/// 一条「人话纠偏」：用户对镜灵形象的反馈，下一次显化（含重置定身份）参考。
+class AvatarFeedback {
+  final int ts;
+  final String text;
+  const AvatarFeedback({required this.ts, required this.text});
+
+  Map<String, dynamic> toJson() => {'ts': ts, 'text': text};
+
+  factory AvatarFeedback.fromJson(Map<String, dynamic> j) => AvatarFeedback(
+        ts: j['ts'] as int? ?? DateTime.now().millisecondsSinceEpoch,
+        text: (j['text'] as String? ?? '').trim(),
+      );
+}
+
+/// 镜灵持久化：avatar.json = 当前 spec + 显化历史 + 用户纠偏反馈。
 /// 风格对齐 profile.dart 的 attach/load/save：文件损坏时静默兜底为「空」。
 class AvatarStore {
   AvatarSpec? current;
   final List<AvatarEntry> history = []; // 最新在前
+  final List<AvatarFeedback> feedback = []; // 最新在前，上限 20
   File? _file;
   Directory? _imageDir;
 
@@ -60,6 +75,10 @@ class AvatarStore {
       for (final e in (j['history'] as List? ?? const [])) {
         history.add(AvatarEntry.fromJson(e as Map<String, dynamic>));
       }
+      feedback.clear();
+      for (final f in (j['feedback'] as List? ?? const [])) {
+        feedback.add(AvatarFeedback.fromJson(f as Map<String, dynamic>));
+      }
       // 一致性兜底：current 与历史最新条解耦时以 current 为准，不强修历史。
     } catch (_) {}
   }
@@ -75,6 +94,8 @@ class AvatarStore {
   Map<String, dynamic> toJson() => {
         if (current != null) 'current': current!.toJson(),
         'history': [for (final e in history) e.toJson()],
+        if (feedback.isNotEmpty)
+          'feedback': [for (final f in feedback) f.toJson()],
       };
 
   /// 提交一次显化结果。仅当「身份或场景真的变了」才推进并落盘，返回是否变化。
@@ -110,5 +131,21 @@ class AvatarStore {
     } catch (_) {
       return null;
     }
+  }
+
+  static const int maxFeedback = 20;
+
+  /// 记一条纠偏反馈（最新在前，超过上限裁掉最旧）。
+  void addFeedback(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return;
+    feedback.insert(0, AvatarFeedback(ts: DateTime.now().millisecondsSinceEpoch, text: t));
+    if (feedback.length > maxFeedback) {
+      feedback.removeRange(maxFeedback, feedback.length);
+    }
+  }
+
+  void removeFeedbackAt(int i) {
+    if (i >= 0 && i < feedback.length) feedback.removeAt(i);
   }
 }

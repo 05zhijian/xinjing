@@ -205,4 +205,23 @@ void main() {
     expect(store.currentImagePath, isNull); // 只丢图
     expect(store.history.length, 1);
   });
+
+  test('render：人话纠偏反馈会注入映射层，并指导下一次显化', () async {
+    final ai = _FakeAvatarAi();
+    ai.reply = _replyOf(sampleSpecs[0]);
+    final store = AvatarStore();
+    final svc = AvatarService(
+        ai: ai, memory: await _seededMemory(), store: store);
+
+    await svc.addFeedback('别这么阴郁，我最近挺开心的');
+    expect(store.feedback.single.text, contains('阴郁'));
+
+    final r = await svc.render();
+    expect(r.outcome, AvatarOutcome.updated);
+
+    final user =
+        ai.calls.last.firstWhere((m) => m['role'] == 'user')['content']!;
+    expect(user, contains('你对镜灵形象的反馈'));
+    expect(user, contains('别这么阴郁'));
+  });
 }

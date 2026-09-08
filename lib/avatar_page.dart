@@ -250,8 +250,10 @@ class _AvatarPageState extends State<AvatarPage> {
           if (spec != null) _buildCurrent(spec),
           const SizedBox(height: 8),
           _buildActions(spec != null),
+          if (spec != null) _buildFeedbackArea(),
           if (spec == null && !service.hasMemory) const _NoDataHint(),
           if (spec == null) _buildSamples(),
+          if (service.feedback.isNotEmpty) _buildFeedbackList(),
           if (service.history.isNotEmpty) _buildHistory(),
         ],
       ),
@@ -404,6 +406,102 @@ class _AvatarPageState extends State<AvatarPage> {
           child: Text('用你的记忆「显化」后，会替换成你自己的镜灵',
               style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
         ),
+      ],
+    );
+  }
+
+  /// 人话纠偏入口：告诉镜灵哪里不像/想要什么样的氛围。
+  Widget _buildFeedbackArea() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: _openFeedbackDialog,
+          icon: const Icon(Icons.edit_note, size: 18),
+          label: const Text('觉得不像？说一句，镜灵会改'),
+          style: TextButton.styleFrom(foregroundColor: const Color(0xFF5C8A6E)),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openFeedbackDialog() async {
+    final controller = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('告诉镜灵'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: '例：别这么阴郁，我最近其实挺开心的 / 场景太冷了，我想要暖一点\n物种想换的话请用「重置身份」',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('记下')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (text == null || text.isEmpty) return;
+    await service.addFeedback(text);
+    if (!mounted) return;
+    setState(() {});
+    _toast('已记下，下次显化会参考。想换物种用「重置身份」。');
+  }
+
+  /// 已给的反馈列表（可删），并始终提示物种请用「重置身份」。
+  Widget _buildFeedbackList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Text('你给过镜灵的反馈',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+            ),
+            Text('换物种用「重置身份」',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        for (final (i, f) in service.feedback.indexed)
+          Card(
+            elevation: 0,
+            margin: const EdgeInsets.only(bottom: 6),
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: Colors.grey.shade200),
+            ),
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.chat_bubble_outline,
+                  size: 18, color: Colors.grey.shade500),
+              title: Text(f.text,
+                  style: const TextStyle(fontSize: 13, height: 1.4)),
+              trailing: IconButton(
+                tooltip: '删除这条反馈',
+                icon: const Icon(Icons.delete_outline, size: 20),
+                onPressed: () async {
+                  await service.removeFeedback(i);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ),
+          ),
       ],
     );
   }

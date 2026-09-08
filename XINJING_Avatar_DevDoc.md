@@ -5,6 +5,7 @@
 > 性质：设计稿。概念已冻结；§十二为已拍板决定。
 > 进度：**M0+M1+M2 已实现**（58 测试全绿 + 真实智谱 key 探针出图成功）。M1 离线跑通「显化→演化→时间轴」、占位画布；M2 落地智谱单 key：`AiService` provider 可切换（DeepSeek/智谱）、`ZhipuImageGen`（GLM-4-Flash 文本 + CogView-3-Flash 生图）、PNG 落盘 `avatar/imgs/`、化身页真图展示。
 > UI（同日）：壳层共享 AppBar——全局右上角 ⚙️ 打开 `ai_settings_page.dart`（服务商 + key 一处配置，随服务商持久化），聊天 ✨ 生成日记 / 日记刷新经 GlobalKey；「我的」瘦身为镜灵卡 + 画像。Android 应用名已修为 UTF-8「心镜」，release 不打入 key。
+> M4（同日补）：**人话纠偏闭环**——反馈存 `avatar.json` 的 `feedback`（≤20，可删）；映射层每次显化/重置定身份都注入【你对镜灵形象的反馈】；物种仍只由「重置身份」显式更换（身份锁定不被口误破坏）。镜灵页新增「觉得不像？说一句」入口 + 反馈列表。60 测试。
 
 ---
 

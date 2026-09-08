@@ -52,9 +52,21 @@ class AvatarService {
       !memory.semantic.isEmpty || memory.episodic.hasItems;
   AvatarSpec? get current => store.current;
   List<AvatarEntry> get history => store.history;
+  List<AvatarFeedback> get feedback => store.feedback;
 
   /// 最新一版的真实出图路径（无则 null，UI 用占位画布）。
   String? get currentImagePath => store.currentImagePath;
+
+  /// 记一条「人话纠偏」，下次显化/重置定身份时喂给映射层。
+  Future<void> addFeedback(String text) async {
+    store.addFeedback(text);
+    await store.save();
+  }
+
+  Future<void> removeFeedback(int index) async {
+    store.removeFeedbackAt(index);
+    await store.save();
+  }
 
   List<AvatarSpec> get samples => sampleSpecs;
   AvatarSpec sampleAt(int i) => sampleSpecs[i % sampleSpecs.length];
@@ -144,6 +156,15 @@ class AvatarService {
     user.writeln();
     user.writeln('【近期记忆】');
     user.writeln(recentLines.isEmpty ? '（暂无）' : recentLines);
+
+    // 人话纠偏：用户对镜灵形象表达过的不满意/偏好，优先参考。
+    final feedbackLines =
+        store.feedback.take(5).map((f) => '· ${f.text}').join('\n');
+    if (feedbackLines.isNotEmpty) {
+      user.writeln();
+      user.writeln('【你对镜灵形象的反馈】（优先参考；若与锁定身份矛盾，只按它调整 scene，别改 species）');
+      user.writeln(feedbackLines);
+    }
 
     return [
       {
