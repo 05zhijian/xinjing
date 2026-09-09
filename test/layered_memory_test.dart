@@ -15,6 +15,19 @@ class FakeAi extends AiService {
   }
 }
 
+/// 支持画像审查分支的假 AI：按 system 内容分流 extract / insight / review。
+class _ReviewFakeAi extends AiService {
+  @override
+  Future<String> complete(List<Map<String, String>> messages) async {
+    final sys = messages.first['content'] ?? '';
+    if (sys.contains('expire')) {
+      return '{"expire":["减肥"],"note":"你不再执着于减肥，转向考研方向。"}';
+    }
+    if (sys.contains('洞察')) return '记得自己真正的目标';
+    return '{"goals":["考研"],"values":[],"facts":[]}';
+  }
+}
+
 LayeredMemory buildLayered({UserProfile? semantic}) {
   return LayeredMemory(
     episodic: VectorMemory(),
@@ -81,9 +94,9 @@ void main() {
     final result = await m.consolidate(FakeAi(), messages);
     expect(result.profileUpdated, isTrue);
     expect(result.insight, '记得自己真正的目标');
-    expect(m.semantic.goals, contains('减肥'));
-    expect(m.semantic.values, contains('自由'));
-    expect(m.semantic.facts, contains('做移动端'));
+    expect(m.semantic.of('goals').map((e) => e.text), contains('减肥'));
+    expect(m.semantic.of('values').map((e) => e.text), contains('自由'));
+    expect(m.semantic.of('facts').map((e) => e.text), contains('做移动端'));
     expect(m.episodic.items.any((it) => it.type == 'insight'), isTrue);
   });
 
@@ -95,7 +108,9 @@ void main() {
     ];
     await m.consolidate(FakeAi(), messages);
     await m.consolidate(FakeAi(), messages);
-    expect(m.semantic.goals.where((g) => g == '减肥').length, 1);
+    final goal = m.semantic.of('goals').single;
+    expect(goal.text, '减肥');
+    expect(goal.strength, greaterThanOrEqualTo(2)); // 再印证只+强度，不重复建条目
     expect(m.episodic.items.where((it) => it.type == 'insight').length, 2);
   });
 
@@ -107,5 +122,30 @@ void main() {
     expect(m.stats()['working'], 1);
     expect(m.stats()['episodic'], 1);
     expect(m.stats()['semantic'], 2);
+  });
+
+  test('consolidate：攒够阈值触发 review → 过时条目降级 + 记变化 + 计数归零', () async {
+    final semantic = UserProfile()
+      ..absorb({'goals': ['减肥'], 'values': [], 'facts': []});
+    final m = LayeredMemory(
+      episodic: VectorMemory(),
+      semantic: semantic,
+      diaryReviewEvery: 1, // 一篇就触发，方便测
+    );
+    await m.remember('我想考研了，放下对体重的执念', type: 'diary');
+    final messages = [
+      {'role': 'user', 'content': '我想考研'},
+    ];
+
+    final r = await m.consolidate(_ReviewFakeAi(), messages);
+    expect(r.profileUpdated, isTrue);
+
+    final activeGoals = m.semantic.of('goals').map((e) => e.text);
+    expect(activeGoals, contains('考研'));
+    expect(activeGoals, isNot(contains('减肥'))); // 被 review 降级
+    expect(m.semantic.changeLog, isNotEmpty);
+    expect(m.semantic.diarySinceReview, 0); // 计数已归零
+    // 降级是「保留历史」，不是真删
+    expect(m.semantic.inactiveCount, 1);
   });
 }

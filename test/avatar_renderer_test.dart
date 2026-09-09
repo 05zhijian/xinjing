@@ -34,11 +34,7 @@ LayeredMemory _emptyMemory() =>
 /// 带一点积累的三层：画像里有一条目标 + 情景层有一条日记。
 Future<LayeredMemory> _seededMemory() async {
   final semantic = UserProfile()
-    ..merge(UserProfile.fromJson({
-      'goals': ['减肥'],
-      'values': [],
-      'facts': [],
-    }));
+    ..absorb(const {'goals': ['减肥'], 'values': [], 'facts': []});
   final m = LayeredMemory(episodic: VectorMemory(), semantic: semantic);
   await m.remember('今天开始早睡', type: 'diary');
   return m;

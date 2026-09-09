@@ -156,3 +156,26 @@
 
 验证命令：`cd ai_diary_demo && flutter analyze && flutter test`
 集成测试：`flutter test integration_test/app_test.dart -d emulator-5554 --dart-define=DEEPSEEK_API_KEY=你的key`
+
+---
+
+## 九、画像进化（L3 自我修正，2026-09-09 增补）
+
+**问题**：画像原本「只增不减」（merge 只去重），旧认知与新现实永远叠加，没有时间维度，谈不上「越用越懂」。
+
+**解法**：把画像从「字符串清单」升级成「带元数据的条目 + 三个机制」，JSON 兼容旧数组格式：
+
+```
+ProfileItem = 文本 + dim(goals/values/facts)
+            + strength(被印证次数) + lastSeen(最近印证) + active(是否仍成立)
+```
+
+1. **修订型抽取**：每次 consolidate 不再只 append——同维同文命中 → 刷新 `lastSeen` 并 `strength+1`；否则新增。每篇日记都在「强化或新增」，从不稀释。
+2. **画像审查 review**：每新增 7 篇日记触发一次（`kProfileDiaryReviewEvery`，可构造参数调）。让模型对照最近 10 条日记/洞察，输出 `{"expire":["原文"],"note":"一句话变化"}`；把过时条目 `active=false`（**只降级不真删**，留历史与强度），note 写进 `changeLog`（时间轴 = 它怎么修正自己的证据）。
+3. **人可纠错**：注入 system 只取**活跃**条目；「我的」页每条可点「放下」（降级）、手动补充 upsert。「放下」是 P1 里用户最直接的收敛手段。
+
+**写入流**：`LayeredMemory.consolidate()` → 抽取吸收 + 洞察回写 + `addDiary()` → 阈值到则 `_review()`。
+
+**不做的**：不自动按时间衰减过期（避免误杀仍成立但久未提及的长期画像）——过期只由 review 依据证据判定。
+
+**测试**：64 全绿，覆盖旧格式兼容 / strength 刷新 / deactivate 降级保留 / review 触发与降级 / 注入只含活跃。模型回复容忍前后缀，解析失败严格指令重试一次。
