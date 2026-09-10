@@ -25,10 +25,30 @@ class AiService {
       'https://open.bigmodel.cn/api/paas/v4/images/generations';
   static const String _zhipuImageModel = 'cogview-3-flash';
   static const String _zhipuEnvKey = String.fromEnvironment('ZHIPU_API_KEY');
-  static const String _envProvider =
-      String.fromEnvironment('AI_PROVIDER', defaultValue: kDeepSeek);
+  static const String _envProvider = String.fromEnvironment('AI_PROVIDER');
 
-  String _provider = providers.contains(_envProvider) ? _envProvider : kDeepSeek;
+  /// 默认服务商规则：
+  /// 1) 显式 `--dart-define=AI_PROVIDER=` 优先；
+  /// 2) 有智谱 key → 智谱（含生图，开箱即完整体验）；
+  /// 3) 只有 DeepSeek key → DeepSeek（兼容老的一键运行方式）；
+  /// 4) 都没有（分发的空环境）→ 智谱，没配 key 时由 UI 引导去右上角 ⚙️。
+  /// 用户显式保存过服务商时，prefs 会再覆盖一次（见 chat_page/_loadSavedKey）。
+  static String resolveProvider({
+    String explicit = '',
+    bool hasZhipuKey = false,
+    bool hasDeepSeekKey = false,
+  }) {
+    if (providers.contains(explicit)) return explicit;
+    if (hasZhipuKey) return kZhipu;
+    if (hasDeepSeekKey) return kDeepSeek;
+    return kZhipu;
+  }
+
+  String _provider = resolveProvider(
+    explicit: _envProvider,
+    hasZhipuKey: _zhipuEnvKey.isNotEmpty,
+    hasDeepSeekKey: _envKey.isNotEmpty,
+  );
 
   /// 当前服务商。切换后按需生效（每次请求现取，不缓存）。
   String get provider => _provider;

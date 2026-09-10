@@ -73,9 +73,10 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
                     style: const TextStyle(color: Color(0xFF5C8A6E)),
                     items: const [
                       DropdownMenuItem(
-                          value: AiService.kDeepSeek, child: Text('DeepSeek')),
+                          value: AiService.kZhipu, child: Text('智谱 · 推荐')),
                       DropdownMenuItem(
-                          value: AiService.kZhipu, child: Text('智谱')),
+                          value: AiService.kDeepSeek,
+                          child: Text('DeepSeek · 备用')),
                     ],
                     onChanged: (v) {
                       if (v != null) _setProvider(v);
@@ -86,8 +87,8 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
               const SizedBox(height: 4),
               Text(
                 _zhipu
-                    ? '智谱：一个 key 全通——GLM 文本/日记 + CogView 生图（镜灵出真图）'
-                    : 'DeepSeek：纯文本/日记；无生图，镜灵用占位画布',
+                    ? '智谱 · 推荐（含生图）：一个 key 全通——GLM 对话/日记 + CogView 生图，镜灵出真图'
+                    : 'DeepSeek · 纯文本备用：无生图，镜灵用占位画布；智谱限流时可切过来应急',
                 style: TextStyle(fontSize: 12, height: 1.4, color: Colors.grey.shade600),
               ),
             ],
