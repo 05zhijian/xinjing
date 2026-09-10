@@ -1,5 +1,7 @@
 # 心镜 · AI 陪伴日记
 
+![CI](https://github.com/05zhijian/xinjing/actions/workflows/ci.yml/badge.svg)
+
 一个会**记住你**的 AI 陪伴日记 App（Flutter）：日常对话与觉察日记沉淀成对你的了解，并且把这份了解**显化成一只会演化的「镜灵」**——由你自己的记忆画出来的具象自我。
 
 - 三层记忆架构：聊天/日记从「原始记录」沉淀为「长期认识」

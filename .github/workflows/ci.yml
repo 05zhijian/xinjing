@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # 与本地开发版本保持一致，避免新版 Flutter 的 lint/行为差异导致误报
+          channel: stable
+          flutter-version: '3.32.0'
+          cache: true
+
+      - run: flutter --version
+      - run: flutter pub get
+      - run: flutter analyze
+      # 只跑离线单测（test/）；integration_test 需要真机与真实 key，不进 CI
+      - run: flutter test
