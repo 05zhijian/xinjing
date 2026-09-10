@@ -42,6 +42,19 @@ Future<LayeredMemory> _seededMemory() async {
 
 String _replyOf(AvatarSpec spec) => '好的，为你显化：\n${jsonEncode(spec.toJson())}';
 
+/// 返回空内容并记录失败原因的假 AI（模拟限流 / 鉴权失败）。
+class _FailingAi extends AiService {
+  _FailingAi(this.reason);
+  final String reason;
+  @override
+  bool get hasKey => true;
+  @override
+  Future<String> complete(List<Map<String, String>> messages) async {
+    lastError = reason;
+    return '';
+  }
+}
+
 /// 假生图：可配置是否就绪 / 是否返回字节。
 class _FakeImg implements ImageGen {
   final bool _ready;
@@ -152,6 +165,19 @@ void main() {
     expect(r.message, isNotEmpty);
     expect(store.hasIdentity, isFalse);
     expect(ai.calls.length, 2); // 首次 + 严格指令重试
+  });
+
+  test('render：服务商失败 → 如实转达原因（不再笼统「无法解析」）', () async {
+    final store = AvatarStore();
+    final svc = AvatarService(
+      ai: _FailingAi('被限流（429）：稍等再试，或在 ⚙️ 里切到备用服务商'),
+      memory: await _seededMemory(),
+      store: store,
+    );
+    final r = await svc.render();
+    expect(r.outcome, AvatarOutcome.error);
+    expect(r.message, contains('429'));
+    expect(store.hasIdentity, isFalse);
   });
 
   test('render：未配 Key → error，不打搅模型', () async {

@@ -80,7 +80,7 @@ class AvatarService {
   /// 触发一次显化。无素材返回 needData；AI 不可用/返回不可解析返回 error。
   Future<AvatarResult> render() async {
     if (!hasKey) {
-      return AvatarResult.error('未配置 AI Key：请先在「我的」页顶部的 AI Key 卡片设置。');
+      return AvatarResult.error('未配置 AI Key：请点右上角 ⚙️ 配置后重试。');
     }
     if (!hasMemory && !hasIdentity) return AvatarResult.needData();
 
@@ -98,7 +98,11 @@ class AvatarService {
       spec = AvatarSpec.parse(await ai.complete(msgs));
     }
     if (spec == null) {
-      return AvatarResult.error('镜灵生成失败：AI 返回内容无法解析，可稍后重试。');
+      // 如实转达服务商那边的失败原因（限流/鉴权/空响应），而不是笼统「无法解析」
+      final why = ai.lastError;
+      return AvatarResult.error(why == null
+          ? '镜灵生成失败：AI 返回内容无法解析，可稍后重试。'
+          : '镜灵生成失败：$why。');
     }
     if (isFirst) {
       if (!spec.isValid) {

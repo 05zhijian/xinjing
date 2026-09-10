@@ -226,7 +226,7 @@ class ChatPageState extends State<ChatPage> {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 12),
               child: Text(
-                '⚠️ 未配置 API Key：flutter run --dart-define=DEEPSEEK_API_KEY=你的key',
+                '⚠️ 未配置 AI Key：点右上角 ⚙️ 选服务商并粘贴你的 key',
                 style: TextStyle(color: Colors.orange, fontSize: 12),
               ),
             ),

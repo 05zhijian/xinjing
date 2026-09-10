@@ -171,9 +171,16 @@ class AiService {
     }
   }
 
-  /// 非流式完整回复（画像抽取等一次性调用）。失败返回空串。
+  /// 最近一次失败的原因（供 UI 显示可操作的提示）；成功时清空。
+  String? lastError;
+
+  /// 非流式完整回复（画像抽取等一次性调用）。失败返回空串，
+  /// 并把原因写进 [lastError]——不要把失败原因吞掉，否则上层只能瞎猜。
   Future<String> complete(List<Map<String, String>> messages) async {
-    if (!hasKey) return '';
+    if (!hasKey) {
+      lastError = '未配置 AI Key';
+      return '';
+    }
     final client = http.Client();
     try {
       final response = await _postWithRetry(
@@ -193,14 +200,31 @@ class AiService {
         },
         timeout: const Duration(seconds: 90),
       );
-      if (response.statusCode != 200) return '';
+      if (response.statusCode != 200) {
+        lastError = response.statusCode == 401 || response.statusCode == 403
+            ? '鉴权失败（${response.statusCode}）：请检查 key 是否粘全、有无多余字符'
+            : response.statusCode == 429
+                ? '被限流（429）：稍等再试，或在 ⚙️ 里切到备用服务商'
+                : '接口错误 ${response.statusCode}';
+        return '';
+      }
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       final choices = json['choices'] as List?;
-      if (choices == null || choices.isEmpty) return '';
+      if (choices == null || choices.isEmpty) {
+        lastError = '响应里没有 choices';
+        return '';
+      }
       final msg = (choices.first as Map<String, dynamic>)['message'];
-      if (msg is Map<String, dynamic>) return msg['content'] as String? ?? '';
-      return '';
-    } catch (_) {
+      final content =
+          msg is Map<String, dynamic> ? (msg['content'] as String? ?? '') : '';
+      if (content.isEmpty) {
+        lastError = '响应内容为空（模型没吐东西）';
+        return '';
+      }
+      lastError = null;
+      return content;
+    } catch (e) {
+      lastError = '请求异常：$e';
       return '';
     } finally {
       client.close();
