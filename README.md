@@ -7,6 +7,12 @@
 - 隐私优先：记忆全在本地 `documents/xianhuadewo/`，只把提炼后的文本发给 AI/生图平台
 - 无后端、一人一 key：对方填一个自己的 key 即可用全部功能
 
+## 截图
+
+| 聊天 | 镜灵（AI 生图，样例） |
+|---|---|
+| ![聊天](docs/screenshots/chat.jpg) | ![镜灵](docs/screenshots/avatar.jpg) |
+
 ## 核心亮点
 
 | | 说明 |
