@@ -114,6 +114,8 @@ class AiService {
               'messages': messages,
               'stream': true,
               'temperature': 0.7,
+              // 推理模型的 reasoning 会先吃掉预算，不设上限时 content 可能一个字都不吐
+              'max_tokens': 2048,
             });
           response =
               await client.send(request).timeout(const Duration(seconds: 60));
@@ -140,17 +142,25 @@ class AiService {
         debugPrint('[ai] chat failed final: ${response?.statusCode}');
         return;
       }
+      var emitted = false;
       await for (final line in response.stream
           .transform(utf8.decoder)
           .transform(const LineSplitter())
           .timeout(const Duration(seconds: 45))) {
         final delta = extractDeltaContent(line);
         if (delta != null && delta.isNotEmpty) {
+          emitted = true;
           onDelta(delta);
         }
         if (line.trim().startsWith('data:') && line.contains('[DONE]')) {
           break;
         }
+      }
+      // 一个字都没吐（例如内容被放进 reasoning_content）：当失败处理，
+      // 否则上层会存下空回复、空日记并触发一次无意义的记忆整合。
+      if (!emitted) {
+        onError('模型没有返回内容，请重试（或在 ⚙️ 里换个服务商）');
+        return;
       }
       onDone();
     } catch (e) {

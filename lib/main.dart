@@ -71,7 +71,11 @@ class _AiDiaryAppState extends State<AiDiaryApp> {
         _practice.load(),
         _avatarStore.load(),
       ]);
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        // 日记页在启动时（目录挂载前）已做过一次 list()，这里存储就绪后补拉一次
+        _diariesKey.currentState?.refresh();
+      }
     } catch (_) {
       // 存储初始化失败不阻塞 UI，各 store 内部已静默兜底
     }
@@ -142,7 +146,12 @@ class _AiDiaryAppState extends State<AiDiaryApp> {
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _tab,
-          onDestinationSelected: (i) => setState(() => _tab = i),
+          onDestinationSelected: (i) {
+            setState(() => _tab = i);
+            // 日记页被 IndexedStack 保活、切进来不会重跑 initState → 主动刷新，
+            // 否则刚生成的日记要手动点右上角刷新才看得到
+            if (i == 2) _diariesKey.currentState?.refresh();
+          },
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline),

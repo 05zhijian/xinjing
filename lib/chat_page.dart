@@ -169,6 +169,11 @@ class ChatPageState extends State<ChatPage> {
         setState(() => _thinking = false);
         _scrollToBottom();
         final content = _messages[index].content.trim();
+        if (content.isEmpty) {
+          // 兜底：没内容就不落盘、不进记忆（AiService 已把「零输出」当失败处理）
+          setState(() => _messages[index].content = '⚠️ 这次没生成出内容，请重试');
+          return;
+        }
         await widget.diaryStore.save(content);
         await _memory.remember(content, type: 'diary');
         // 记忆整合升华：抽取画像进语义层 + 洞察写回情景层。

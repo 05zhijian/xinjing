@@ -25,12 +25,13 @@ class DiaryStore {
 
   Future<void> save(String content, {DateTime? date}) async {
     if (_dir == null) return;
+    final block = content.trim();
+    if (block.isEmpty) return; // 空内容不落盘：避免出现「1 字节的空日记」
     final d = date ?? DateTime.now();
     try {
       await _dir!.create(recursive: true);
       final file = File('${_dir!.path}/${_fileName(d)}');
       final existing = await file.exists() ? await file.readAsString() : '';
-      final block = content.trim();
       final merged = existing.isEmpty ? block : '$existing\n\n---\n\n$block';
       await file.writeAsString('$merged\n');
     } catch (_) {}
@@ -44,7 +45,10 @@ class DiaryStore {
       for (final e in children) {
         if (e is! File || !e.path.endsWith('.md')) continue;
         final name = e.uri.pathSegments.last.replaceAll('.md', '');
-        entries.add(DiaryEntry(name, await e.readAsString()));
+        final content = await e.readAsString();
+        // 历史遗留的空日记（早期版本可能写入空白内容）不再展示
+        if (content.replaceAll(RegExp(r'[-\s]'), '').isEmpty) continue;
+        entries.add(DiaryEntry(name, content));
       }
       entries.sort((a, b) => b.date.compareTo(a.date));
       return entries;
