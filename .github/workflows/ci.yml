@@ -24,3 +24,7 @@ jobs:
       - run: flutter analyze
       # 只跑离线单测（test/）；integration_test 需要真机与真实 key，不进 CI
       - run: flutter test
+
+      # 防「本地能跑、打包才炸」：Android 构建也过一遍。
+      # 只打 arm64 debug，省时间；改动 AndroidManifest / 加插件这类问题的安全网。
+      - run: flutter build apk --debug --target-platform android-arm64
