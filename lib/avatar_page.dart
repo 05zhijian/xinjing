@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'avatar.dart';
 import 'avatar_renderer.dart';
 import 'avatar_store.dart';
+import 'image_exporter.dart';
 
 /// 镜灵画面：有真实出图（[imagePath] 指向 PNG）就显示图片，否则用主题色
 /// 渐变 + 图标占位。物种决定渐变配色（确定性），夜/雨/雪加月亮以示气氛。
@@ -410,20 +411,36 @@ class _AvatarPageState extends State<AvatarPage> {
     );
   }
 
-  /// 人话纠偏入口：告诉镜灵哪里不像/想要什么样的氛围。
+  /// 保存到相册 + 人话纠偏入口。
   Widget _buildFeedbackArea() {
+    final style = TextButton.styleFrom(foregroundColor: const Color(0xFF5C8A6E));
     return Padding(
       padding: const EdgeInsets.only(top: 4),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          onPressed: _openFeedbackDialog,
-          icon: const Icon(Icons.edit_note, size: 18),
-          label: const Text('觉得不像？说一句，镜灵会改'),
-          style: TextButton.styleFrom(foregroundColor: const Color(0xFF5C8A6E)),
-        ),
+      child: Wrap(
+        spacing: 4,
+        children: [
+          TextButton.icon(
+            onPressed: _saveCurrentImage,
+            icon: const Icon(Icons.download_outlined, size: 18),
+            label: const Text('保存到相册'),
+            style: style,
+          ),
+          TextButton.icon(
+            onPressed: _openFeedbackDialog,
+            icon: const Icon(Icons.edit_note, size: 18),
+            label: const Text('觉得不像？说一句'),
+            style: style,
+          ),
+        ],
       ),
     );
+  }
+
+  /// 把当前镜灵图存进系统相册（没有图/无权限/失败都给明确说法）。
+  Future<void> _saveCurrentImage() async {
+    final msg =
+        await ImageExporter.saveToGalleryWithMessage(service.currentImagePath);
+    _toast(msg);
   }
 
   Future<void> _openFeedbackDialog() async {
@@ -552,6 +569,13 @@ class _AvatarPageState extends State<AvatarPage> {
     return '${d.year}/${d.month}/${d.day} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
   }
 
+  /// 从演化史大图里保存那一版的图（先关掉弹窗，避免提示被遮住）。
+  Future<void> _saveEntryImage(BuildContext dialogCtx, AvatarEntry e) async {
+    Navigator.pop(dialogCtx);
+    final msg = await ImageExporter.saveToGalleryWithMessage(e.imagePath);
+    _toast(msg);
+  }
+
   /// 点开一条演化史：大图 + 当次的完整画面说明。
   void _showEntry(AvatarEntry e) {
     final s = e.spec;
@@ -610,9 +634,19 @@ class _AvatarPageState extends State<AvatarPage> {
                       style: const TextStyle(fontSize: 13, height: 1.5)),
                 ),
               const SizedBox(height: 4),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('关闭'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton.icon(
+                    onPressed: () => _saveEntryImage(ctx, e),
+                    icon: const Icon(Icons.download_outlined, size: 18),
+                    label: const Text('保存到相册'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('关闭'),
+                  ),
+                ],
               ),
             ],
           ),
