@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ai_diary_demo/practice.dart';
+import 'package:xinjing/practice.dart';
 
 void main() {
   test('PracticeData toJson/fromJson 往返一致', () {

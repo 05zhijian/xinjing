@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ai_diary_demo/memory.dart';
+import 'package:xinjing/memory.dart';
 
 void main() {
   test('cosineSimilarity：相同向量 = 1', () {

@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ai_diary_demo/avatar.dart';
-import 'package:ai_diary_demo/avatar_samples.dart';
-import 'package:ai_diary_demo/avatar_store.dart';
+import 'package:xinjing/avatar.dart';
+import 'package:xinjing/avatar_samples.dart';
+import 'package:xinjing/avatar_store.dart';
 
 /// 基于 sampleSpecs[0]（白狐）造一个 scene 不同的 spec，用于验证「只 scene 变化」。
 AvatarSpec _withScene(String setting) {

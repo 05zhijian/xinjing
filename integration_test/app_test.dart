@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:ai_diary_demo/main.dart' as app;
+import 'package:xinjing/main.dart' as app;
 
 /// 轮询等待某个控件出现（真实网络/AI 流式场景，pumpAndSettle 等不到）。
 /// 超时时把当前屏幕全部文本打进失败信息，便于诊断。

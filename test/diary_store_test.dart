@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ai_diary_demo/diary_store.dart';
+import 'package:xinjing/diary_store.dart';
 
 void main() {
   late Directory tempDir;

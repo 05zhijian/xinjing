@@ -3,15 +3,15 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ai_diary_demo/ai_service.dart';
-import 'package:ai_diary_demo/avatar.dart';
-import 'package:ai_diary_demo/avatar_samples.dart';
-import 'package:ai_diary_demo/avatar_renderer.dart';
-import 'package:ai_diary_demo/avatar_store.dart';
-import 'package:ai_diary_demo/image_service.dart';
-import 'package:ai_diary_demo/layered_memory.dart';
-import 'package:ai_diary_demo/memory.dart';
-import 'package:ai_diary_demo/profile.dart';
+import 'package:xinjing/ai_service.dart';
+import 'package:xinjing/avatar.dart';
+import 'package:xinjing/avatar_samples.dart';
+import 'package:xinjing/avatar_renderer.dart';
+import 'package:xinjing/avatar_store.dart';
+import 'package:xinjing/image_service.dart';
+import 'package:xinjing/layered_memory.dart';
+import 'package:xinjing/memory.dart';
+import 'package:xinjing/profile.dart';
 
 /// 不发网络的假 AI：罐头回复 + 记录每次调用消息。
 class _FakeAvatarAi extends AiService {

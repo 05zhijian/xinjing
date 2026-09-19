@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ai_diary_demo/image_exporter.dart';
+import 'package:xinjing/image_exporter.dart';
 
 void main() {
   test('saveBlockedReason：没图 / 路径空 → 说清是「还没有图」', () {

@@ -53,7 +53,7 @@ Flutter / Dart · 本地字符 n-gram 哈希嵌入（自包含、不限流、确
 ## 运行
 
 ```bash
-cd ai_diary_demo
+cd xinjing
 
 # Windows 桌面
 flutter run -d windows

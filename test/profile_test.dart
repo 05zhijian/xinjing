@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ai_diary_demo/profile.dart';
+import 'package:xinjing/profile.dart';
 
 void main() {
   test('旧格式兼容：纯数组 goals/values/facts → 转活跃条目', () {

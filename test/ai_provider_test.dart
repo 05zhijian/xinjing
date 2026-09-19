@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ai_diary_demo/ai_service.dart';
-import 'package:ai_diary_demo/image_service.dart';
+import 'package:xinjing/ai_service.dart';
+import 'package:xinjing/image_service.dart';
 
 void main() {
   test('provider：默认规则——显式 > 有智谱 key > 只有 DS key > 空环境(智谱)', () {

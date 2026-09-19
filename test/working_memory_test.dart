@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ai_diary_demo/working_memory.dart';
+import 'package:xinjing/working_memory.dart';
 
 void main() {
   test('addTurn：按时间先后追加，顺序保持', () {

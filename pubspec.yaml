@@ -1,5 +1,5 @@
-name: ai_diary_demo
-description: "A new Flutter project."
+name: xinjing
+description: "心镜 · AI 陪伴日记 App：三层记忆架构 + 会演化的 AI 具象化身"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
