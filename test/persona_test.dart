@@ -10,8 +10,9 @@ void main() {
       const clauses = [
         '安全边界',
         '禁语',
-        '一次只问一个问题',
+        '问句最多两个',
         '命名情绪',
+        '具体化的对照',
         '不使用 Markdown',
         '不出现"你应该"',
         '12356',
@@ -24,7 +25,7 @@ void main() {
 
     test('长度在预算内（够细但不失控）', () {
       expect(companionSystemPrompt.length, greaterThan(600));
-      expect(companionSystemPrompt.length, lessThan(3000));
+      expect(companionSystemPrompt.length, lessThan(3600));
     });
 
     test('App 真的在用这份手册（防止回退成硬编码的一句话）', () {
@@ -45,9 +46,12 @@ void main() {
       expect(checkReply('## 建议\n早点睡').map((v) => v.code), contains('markdown'));
     });
 
-    test('一次问多个问题命中', () {
-      expect(checkReply('你还好吗？要不要聊聊？').map((v) => v.code),
-          contains('multi_question'));
+    test('问句数：两个以内通过（确认+深入），三个才违规', () {
+      expect(checkReply('听起来很委屈，是吗？最扎你的是哪一下？'), isEmpty);
+      expect(
+        checkReply('你还好吗？要不要聊聊？现在方便吗？').map((v) => v.code),
+        contains('multi_question'),
+      );
     });
 
     test('危机情境缺少求助指引命中', () {

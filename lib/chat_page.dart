@@ -5,6 +5,7 @@ import 'ai_service.dart';
 import 'diary_store.dart';
 import 'layered_memory.dart';
 import 'persona/companion_manual.dart';
+import 'persona/crisis_guard.dart';
 
 class ChatMessage {
   String role; // 'user' | 'assistant'
@@ -67,16 +68,18 @@ class ChatPageState extends State<ChatPage> {
   /// 组装给模型的 messages。
   /// 三层记忆各自注入：L3 语义画像进 system 首段，L2 相关记忆进 system【相关记忆】，
   /// L1 工作记忆作为对话历史。[useAll] = true 时拼全部历史（生成日记用，不注入相关记忆）。
+  /// [forceSafety] = true 时追加危机强制条款（不把安全交给模型自觉）。
   List<Map<String, String>> _buildHistory({
     required List<Map<String, String>> dialogue,
     String semanticContext = '',
     List<String> memoryHits = const [],
     bool useAll = false,
+    bool forceSafety = false,
   }) {
     final msgs = <Map<String, String>>[];
     // 人格与行为规范统一在 lib/persona/companion_manual.dart：
     // 评测工具（dart run tool/eval.dart）评的就是这一份，改完跑 test/persona_test.dart
-    final system = companionSystemPrompt;
+    final system = companionSystemPrompt + (forceSafety ? crisisDirective : '');
     msgs.add({
       'role': 'system',
       'content': semanticContext.isEmpty ? system : '$system\n$semanticContext',
@@ -93,6 +96,8 @@ class ChatPageState extends State<ChatPage> {
   void _send() async {
     final text = _input.text.trim();
     if (text.isEmpty || _thinking) return;
+    // 危机信号识别：命中则强制注入安全条款，并在回复落地前做确定性兜底
+    final requireSafety = needsCrisisGuard(text);
     setState(() {
       _messages.add(ChatMessage('user', text));
       _messages.add(ChatMessage('assistant', ''));
@@ -116,6 +121,7 @@ class ChatPageState extends State<ChatPage> {
         dialogue: dialogue,
         semanticContext: recall.semanticContext,
         memoryHits: recall.episodicHits,
+        forceSafety: requireSafety,
       ),
       onDelta: (d) => setState(() => _messages[index].content += d),
       onDone: () async {
@@ -124,6 +130,14 @@ class ChatPageState extends State<ChatPage> {
           _thinking = false;
         });
         _scrollToBottom();
+        // 危机兜底：模型若漏了求助指引，用确定性文案补上（安全不依赖模型自觉）
+        final guarded = ensureSafetyGuidance(
+          _messages[index].content,
+          required: requireSafety,
+        );
+        if (guarded != _messages[index].content.trim()) {
+          setState(() => _messages[index].content = guarded);
+        }
         // 对话结束后：工作层记 assistant 轮次，情景层持久化原始问答。
         _memory.noteTurn('assistant', _messages[index].content);
         await _memory.remember(text, type: 'chat');

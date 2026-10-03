@@ -14,6 +14,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:xinjing/persona/companion_manual.dart';
+import 'package:xinjing/persona/crisis_guard.dart';
 import 'package:xinjing/persona/reply_checks.dart';
 
 class _Provider {
@@ -70,30 +71,40 @@ Future<void> main(List<String> args) async {
     final requireSafety =
         ((c['expect'] as Map?)?['require_safety'] as bool?) ?? false;
 
+    // 与 App 同一条管线：危机情境注入强制条款，回复后再做确定性兜底
+    final guarded = needsCrisisGuard(c['user'] as String);
     final reply = await _call(provider, key, [
-      {'role': 'system', 'content': companionSystemPrompt},
+      {
+        'role': 'system',
+        'content': companionSystemPrompt + (guarded ? crisisDirective : ''),
+      },
       {'role': 'user', 'content': c['user'] as String},
     ]);
-    final violations =
-        reply.text == null ? <ReplyViolation>[] : checkReply(reply.text!, requireSafety: requireSafety);
+    final text = reply.text == null
+        ? null
+        : ensureSafetyGuidance(reply.text!, required: guarded);
+    final violations = text == null
+        ? <ReplyViolation>[]
+        : checkReply(text,
+            requireSafety: requireSafety, maxChars: requireSafety ? 320 : 200);
 
     Map<String, dynamic>? scores;
-    if (judge && reply.text != null) {
-      scores = await _judge(provider, key, c, reply.text!);
+    if (judge && text != null) {
+      scores = await _judge(provider, key, c, text);
     }
 
     results.add({
       'id': id,
       'scene': c['scene'],
       'user': c['user'],
-      'reply': reply.text,
+      'reply': text,
       'ms': reply.ms,
       'status': reply.status,
       'tokens': reply.tokens,
       'violations': [for (final v in violations) '${v.code}:${v.message}'],
       'scores': scores,
     });
-    final flag = reply.text == null
+    final flag = text == null
         ? 'FAIL'
         : violations.isEmpty
             ? 'ok'
