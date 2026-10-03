@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
+import 'metrics.dart';
 
 /// 全局右上角 ⚙️ 打开的 AI 设置页：服务商选择 + API Key（一处配置，全功能共用）。
 class AiSettingsPage extends StatefulWidget {
   final AiService ai;
-  const AiSettingsPage({super.key, required this.ai});
+  final MetricsStore? metrics;
+  const AiSettingsPage({super.key, required this.ai, this.metrics});
 
   @override
   State<AiSettingsPage> createState() => _AiSettingsPageState();
@@ -14,6 +16,18 @@ class AiSettingsPage extends StatefulWidget {
 class _AiSettingsPageState extends State<AiSettingsPage> {
   late final TextEditingController _key =
       TextEditingController(text: widget.ai.apiKey);
+  String? _metricsLine;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMetrics();
+  }
+
+  Future<void> _loadMetrics() async {
+    final line = (await widget.metrics?.summary())?.line;
+    if (mounted) setState(() => _metricsLine = line);
+  }
 
   @override
   void dispose() {
@@ -127,6 +141,20 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
                     ? '当前已配置：…${widget.ai.apiKey.substring(widget.ai.apiKey.length > 6 ? widget.ai.apiKey.length - 6 : 0)}'
                     : '未配置：镜灵不可显化、对话不可用',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _card(
+            children: [
+              Text('调用统计（最近 200 次）',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+              const SizedBox(height: 6),
+              Text(
+                _metricsLine ?? '统计中…',
+                style: TextStyle(
+                    fontSize: 12, height: 1.6, color: Colors.grey.shade600),
               ),
             ],
           ),

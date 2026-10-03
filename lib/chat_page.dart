@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
 import 'diary_store.dart';
 import 'layered_memory.dart';
+import 'persona/companion_manual.dart';
 
 class ChatMessage {
   String role; // 'user' | 'assistant'
@@ -73,7 +74,9 @@ class ChatPageState extends State<ChatPage> {
     bool useAll = false,
   }) {
     final msgs = <Map<String, String>>[];
-    final system = '你是"心镜"的AI成长陪伴师，融合心理学、教练技术与金刚智慧，引导用户觉察、设定目标、完成每日功课。语气温暖、简洁、有引导性，避免说教。';
+    // 人格与行为规范统一在 lib/persona/companion_manual.dart：
+    // 评测工具（dart run tool/eval.dart）评的就是这一份，改完跑 test/persona_test.dart
+    final system = companionSystemPrompt;
     msgs.add({
       'role': 'system',
       'content': semanticContext.isEmpty ? system : '$system\n$semanticContext',

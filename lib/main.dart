@@ -11,6 +11,7 @@ import 'diary_store.dart';
 import 'image_service.dart';
 import 'layered_memory.dart';
 import 'memory.dart';
+import 'metrics.dart';
 import 'practice.dart';
 import 'practice_page.dart';
 import 'profile.dart';
@@ -34,6 +35,7 @@ class _AiDiaryAppState extends State<AiDiaryApp> {
   late final DiaryStore _diaryStore = DiaryStore();
   late final PracticeData _practice = PracticeData();
   final AvatarStore _avatarStore = AvatarStore();
+  final MetricsStore _metrics = MetricsStore();
   late final ImageGen _imageGen = ZhipuImageGen(ai: _ai);
   late final AvatarService _avatar = AvatarService(
       ai: _ai,
@@ -65,6 +67,9 @@ class _AiDiaryAppState extends State<AiDiaryApp> {
       _practice.attach(File('${dataDir.path}/practice.json'));
       _avatarStore.attach(File('${dataDir.path}/avatar.json'));
       _avatarStore.attachImageDir(Directory('${dataDir.path}/avatar'));
+      // 调用埋点：metrics.jsonl（追加写 + 超限裁剪），⚙️ 页会显示汇总
+      _metrics.attach(File('${dataDir.path}/metrics.jsonl'));
+      _ai.onMetric = _metrics.add;
       await Future.wait([
         _episodic.load(),
         _profile.load(),
@@ -84,7 +89,7 @@ class _AiDiaryAppState extends State<AiDiaryApp> {
   void _openAiSettings(BuildContext shellCtx) {
     // 用 MaterialApp 内部的 context（在 Navigator 之下），不能用手上的 State context。
     Navigator.of(shellCtx).push(
-      MaterialPageRoute(builder: (_) => AiSettingsPage(ai: _ai)),
+      MaterialPageRoute(builder: (_) => AiSettingsPage(ai: _ai, metrics: _metrics)),
     );
   }
 

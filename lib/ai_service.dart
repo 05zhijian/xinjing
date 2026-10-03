@@ -5,6 +5,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'metrics.dart';
+
 /// DeepSeek AI 服务：流式对话（OpenAI 兼容 SSE）。
 /// 复用「回忆册」的 SSE 流式解析思路（extractDeltaContent）。
 class AiService {
@@ -101,6 +103,7 @@ class AiService {
       return;
     }
     final client = http.Client();
+    final sw = Stopwatch()..start();
     try {
       http.StreamedResponse? response;
       var delay = _backoffBase;
@@ -138,6 +141,7 @@ class AiService {
         }
       }
       if (response == null || response.statusCode != 200) {
+        _metric('chat', sw, ok: false, status: response?.statusCode);
         onError('接口错误 ${response?.statusCode}');
         debugPrint('[ai] chat failed final: ${response?.statusCode}');
         return;
@@ -159,11 +163,14 @@ class AiService {
       // 一个字都没吐（例如内容被放进 reasoning_content）：当失败处理，
       // 否则上层会存下空回复、空日记并触发一次无意义的记忆整合。
       if (!emitted) {
+        _metric('chat', sw, ok: false, status: 200);
         onError('模型没有返回内容，请重试（或在 ⚙️ 里换个服务商）');
         return;
       }
+      _metric('chat', sw, ok: true, status: 200);
       onDone();
     } catch (e) {
+      _metric('chat', sw, ok: false);
       onError('连接失败：$e');
       debugPrint('[ai] chat stream error: $e');
     } finally {
@@ -174,6 +181,22 @@ class AiService {
   /// 最近一次失败的原因（供 UI 显示可操作的提示）；成功时清空。
   String? lastError;
 
+  /// 埋点回调（由 main 注入 MetricsStore.add）。不注入则完全不记录。
+  void Function(MetricEvent)? onMetric;
+
+  void _metric(String kind, Stopwatch sw,
+      {required bool ok, int? status, int? tokens}) {
+    onMetric?.call(MetricEvent(
+      kind: kind,
+      provider: provider,
+      model: chatModel,
+      ms: sw.elapsedMilliseconds,
+      ok: ok,
+      status: status,
+      tokens: tokens,
+    ));
+  }
+
   /// 非流式完整回复（画像抽取等一次性调用）。失败返回空串，
   /// 并把原因写进 [lastError]——不要把失败原因吞掉，否则上层只能瞎猜。
   Future<String> complete(List<Map<String, String>> messages) async {
@@ -182,6 +205,7 @@ class AiService {
       return '';
     }
     final client = http.Client();
+    final sw = Stopwatch()..start();
     try {
       final response = await _postWithRetry(
         client,
@@ -206,12 +230,14 @@ class AiService {
             : response.statusCode == 429
                 ? '被限流（429）：稍等再试，或在 ⚙️ 里切到备用服务商'
                 : '接口错误 ${response.statusCode}';
+        _metric('complete', sw, ok: false, status: response.statusCode);
         return '';
       }
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       final choices = json['choices'] as List?;
       if (choices == null || choices.isEmpty) {
         lastError = '响应里没有 choices';
+        _metric('complete', sw, ok: false, status: 200);
         return '';
       }
       final msg = (choices.first as Map<String, dynamic>)['message'];
@@ -219,12 +245,18 @@ class AiService {
           msg is Map<String, dynamic> ? (msg['content'] as String? ?? '') : '';
       if (content.isEmpty) {
         lastError = '响应内容为空（模型没吐东西）';
+        _metric('complete', sw, ok: false, status: 200);
         return '';
       }
       lastError = null;
+      _metric('complete', sw,
+          ok: true,
+          status: 200,
+          tokens: (json['usage'] as Map?)?['total_tokens'] as int?);
       return content;
     } catch (e) {
       lastError = '请求异常：$e';
+      _metric('complete', sw, ok: false);
       return '';
     } finally {
       client.close();
