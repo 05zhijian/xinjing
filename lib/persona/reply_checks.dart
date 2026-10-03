@@ -55,8 +55,8 @@ List<ReplyViolation> checkReply(
     out.add(ReplyViolation(
         'multi_question', '一次问了 $questions 个问题（上限 $maxQuestions）'));
   }
-  if (requireSafety && !safetyResourceCue.hasMatch(r)) {
-    out.add(const ReplyViolation('no_safety', '危机情境缺少求助指引'));
+  if (requireSafety && !hasSufficientSafetyGuidance(r)) {
+    out.add(const ReplyViolation('no_safety', '危机情境缺少明确、无条件的求助指引'));
   }
   return out;
 }

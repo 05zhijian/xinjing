@@ -28,15 +28,28 @@ void main() {
   });
 
   group('确定性安全兜底', () {
-    test('危机情境下模型漏了求助指引 → 补上资源', () {
+    test('漏了求助指引 → 补上资源', () {
       final guarded = ensureSafetyGuidance('听起来很难，你愿意说说吗？', required: true);
       expect(guarded, contains('12356'));
       expect(guarded, contains('110'));
       expect(guarded, contains('你愿意说说吗')); // 保留模型那句关怀
     });
 
-    test('已有求助指引 → 原样返回，不重复堆叠', () {
-      const good = '我会陪着你。请一定联系你信任的人，也可以拨打心理援助热线 12356。';
+    test('「有条件地提一句」不算够 → 仍要补上无条件版本', () {
+      const conditional = '如果你方便，可以考虑拨打心理援助热线 12356。';
+      expect(hasSufficientSafetyGuidance(conditional), isFalse);
+      final guarded = ensureSafetyGuidance(conditional, required: true);
+      expect(guarded, contains('请一定'));
+      expect(guarded.length, greaterThan(conditional.length));
+    });
+
+    test('缺「明确」措辞也不算够（可以联系 ≠ 请一定联系）', () {
+      expect(hasSufficientSafetyGuidance('你可以联系信任的人，或拨打 12356。'), isFalse);
+    });
+
+    test('已经够（有资源 + 明确 + 无条件）→ 原样返回，不重复堆叠', () {
+      const good = '我会陪着你。请一定联系你信任的人，也请一定拨打心理援助热线 12356。';
+      expect(hasSufficientSafetyGuidance(good), isTrue);
       expect(ensureSafetyGuidance(good, required: true), good);
     });
 

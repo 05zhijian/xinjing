@@ -46,27 +46,43 @@ bool needsCrisisGuard(String text) => detectCrisis(text).isNotEmpty;
 final RegExp safetyResourceCue =
     RegExp(r'热线|12356|110|120|专业|医生|心理咨询|求助|信任的人|身边的人|家人|朋友|报警');
 
+/// 「明确、无条件」的推荐措辞——危机情境下要的是这个。
+final RegExp emphaticCue = RegExp(r'请一定|请务必|务必|请立即|请马上|一定要|立刻|马上');
+
+/// 条件式/犹豫式措辞：危机情境下不该出现（把求助变成「可选」会削弱它的分量）。
+final RegExp conditionalOffer =
+    RegExp(r'可以考虑|如果你需要|如果需要|如果方便|如果有需要|也许可以|或许可以|如果你想的话');
+
+/// 求助指引是否「足够」：给了资源 + 措辞明确无条件 + 没有条件式框架。
+bool hasSufficientSafetyGuidance(String reply) =>
+    safetyResourceCue.hasMatch(reply) &&
+    emphaticCue.hasMatch(reply) &&
+    !conditionalOffer.hasMatch(reply);
+
 /// 危机情境下注入 system 的强制条款（与手册的安全边界一致，但更强硬）。
 const String crisisDirective = '\n\n【本轮是危机情境，最高优先】'
     '用户可能正处于自伤、自杀、被暴力或伤害他人的风险中。'
-    '不要追问细节、不要分析、不要谈方法、不要只问感受。'
-    '必须先表达在意，然后明确给出求助指引：建议联系现实中信任的人，'
-    '并给出现成资源——心理援助热线 12356（24 小时），紧急情况 110／120。'
-    '这一步不能省略，也不能被提问替代。';
+    '不要追问细节、不要分析、不要谈方法、不要用提问代替建议。'
+    '必须先表达在意，然后**无条件、明确**地建议求助：用「请一定」「请务必」这样的措辞，'
+    '并给出现成资源——心理援助热线 12356（24 小时），紧急情况请立刻打 110／120。'
+    '禁止条件式、犹豫式的说法（"如果方便""可以考虑""也许"这类），'
+    '也不要把建议放在"如果你需要"的前提下。';
 
 /// 确定性的安全回复：模型失手时的兜底文案（也是缺口时的补充段）。
+/// 措辞刻意「无条件 + 明确」，符合 [hasSufficientSafetyGuidance]。
 const String crisisSafetyReply = '听到这些，我很在意你现在的安全。你扛着的东西太重，'
-    '不该由你一个人扛。请一定告诉现实中能帮到你的人；也可以随时拨打心理援助热线 12356'
-    '（24 小时），如果当下有危险，请打 110 或 120。我在这里陪你，但你需要比我更专业的支持。';
+    '不该由你一个人扛。请一定告诉现实中能帮到你的人，也请一定拨打心理援助热线 12356'
+    '（24 小时）；如果当下有危险，请立刻打 110 或 120。我在这里陪你，但你需要比我更专业的支持。';
 
-/// 保证危机回复一定带求助指引：
+/// 保证危机回复一定带「明确无条件」的求助指引：
 /// - [required] 为 false 时原样返回；
-/// - 已有线索则原样返回；
-/// - 缺失则把确定性文案附在末尾（保留模型那句关怀，补上它漏掉的部分）。
+/// - 已足够（有资源 + 明确 + 无条件的犹豫）则原样返回；
+/// - 缺失或只是「有条件地提了一句」则把确定性文案附在末尾
+///   （保留模型那句关怀，补上它没做到的那部分）。
 String ensureSafetyGuidance(String reply, {required bool required}) {
   final r = reply.trim();
   if (!required) return r;
-  if (safetyResourceCue.hasMatch(r)) return r;
+  if (hasSufficientSafetyGuidance(r)) return r;
   if (r.isEmpty) return crisisSafetyReply;
   return '$r\n\n$crisisSafetyReply';
 }

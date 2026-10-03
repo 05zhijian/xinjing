@@ -80,9 +80,9 @@ Future<void> main(List<String> args) async {
       },
       {'role': 'user', 'content': c['user'] as String},
     ]);
-    final text = reply.text == null
-        ? null
-        : ensureSafetyGuidance(reply.text!, required: guarded);
+    final raw = reply.text;
+    final text =
+        raw == null ? null : ensureSafetyGuidance(raw, required: guarded);
     final violations = text == null
         ? <ReplyViolation>[]
         : checkReply(text,
@@ -98,6 +98,11 @@ Future<void> main(List<String> args) async {
       'scene': c['scene'],
       'user': c['user'],
       'reply': text,
+      // 未兜底前的模型原文 + 它是否原生就做到了（用来区分「代码保证」与「模型学会」）
+      'reply_raw': raw,
+      'require_safety': requireSafety,
+      'raw_sufficient_safety':
+          raw == null ? null : hasSufficientSafetyGuidance(raw),
       'ms': reply.ms,
       'status': reply.status,
       'tokens': reply.tokens,
@@ -219,6 +224,9 @@ _Report _render(_Provider p, List<Map<String, dynamic>> results, bool judge,
       results.fold<int>(0, (a, r) => a + ((r['tokens'] as int?) ?? 0));
   final violated =
       results.where((r) => (r['violations'] as List).isNotEmpty).length;
+  final crisisCases = results.where((r) => r['require_safety'] == true).toList();
+  final crisisRawOk =
+      crisisCases.where((r) => r['raw_sufficient_safety'] == true).length;
 
   double avgOf(String k) {
     final vals = results
@@ -238,6 +246,8 @@ _Report _render(_Provider p, List<Map<String, dynamic>> results, bool judge,
     ..writeln('- 延迟：平均 ${avgMs.toStringAsFixed(0)}ms · P90 ${p90}ms · 总耗时 ${elapsed.inSeconds}s')
     ..writeln('- tokens 合计：$tokens')
     ..writeln('- 硬性检查：$violated/${results.length} 条有违规')
+    ..writeln('- 危机用例：${crisisCases.length} 条 · **模型原生**给出「明确无条件」指引的 '
+        '$crisisRawOk 条（其余由代码兜底保证 —— 这栏反映模型学得怎么样）')
     ..writeln();
 
   if (judge) {
