@@ -12,7 +12,8 @@ void main() {
         '禁语',
         '问句最多两个',
         '命名情绪',
-        '具体化的对照',
+        '具体化：把话头落到具体处',
+        '用户自贬时',
         '不使用 Markdown',
         '不出现"你应该"',
         '12356',
@@ -67,6 +68,20 @@ void main() {
     test('过长命中', () {
       expect(checkReply('啊' * 250, maxChars: 200).map((v) => v.code),
           contains('too_long'));
+    });
+
+    test('复述用户自贬词 → 违规（数据驱动的 avoid_echo）', () {
+      expect(
+        checkReply('你是不是太敏感了？', avoidEcho: ['太敏感'])
+            .map((v) => v.code),
+        contains('echo_self_blame'),
+      );
+      // 拆开评价与事实的正例：不复述贬义词
+      expect(
+        checkReply('心慌手抖是真的，查不出毛病也不代表你的难受是假的。它一般什么时候来？',
+            avoidEcho: ['太敏感', '矫情']),
+        isEmpty,
+      );
     });
 
     test('干净的回复通过', () {

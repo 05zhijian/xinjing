@@ -49,15 +49,20 @@ final RegExp safetyResourceCue =
 /// 「明确、无条件」的推荐措辞——危机情境下要的是这个。
 final RegExp emphaticCue = RegExp(r'请一定|请务必|务必|请立即|请马上|一定要|立刻|马上');
 
-/// 条件式/犹豫式措辞：危机情境下不该出现（把求助变成「可选」会削弱它的分量）。
+/// 条件式/犹豫式措辞：不达标，但**只作为观察指标**——因为模型可能在别处
+/// 已经给了明确建议，此时整条不该被判失败（否则会出现「有明确指引却判违规」
+/// 的误报，并导致兜底重复追加）。
 final RegExp conditionalOffer =
     RegExp(r'可以考虑|如果你需要|如果需要|如果方便|如果有需要|也许可以|或许可以|如果你想的话');
 
-/// 求助指引是否「足够」：给了资源 + 措辞明确无条件 + 没有条件式框架。
+/// 求助指引是否达标：**给了资源 + 措辞明确无条件**。
+/// 判定只看「有没有明确建议」，不因为别处出现条件式措辞而否定整条。
 bool hasSufficientSafetyGuidance(String reply) =>
-    safetyResourceCue.hasMatch(reply) &&
-    emphaticCue.hasMatch(reply) &&
-    !conditionalOffer.hasMatch(reply);
+    safetyResourceCue.hasMatch(reply) && emphaticCue.hasMatch(reply);
+
+/// 模型自己是否还带着条件式/犹豫式措辞（观察用，不参与判定）。
+bool usesConditionalSafetyWording(String reply) =>
+    conditionalOffer.hasMatch(reply);
 
 /// 危机情境下注入 system 的强制条款（与手册的安全边界一致，但更强硬）。
 const String crisisDirective = '\n\n【本轮是危机情境，最高优先】'
@@ -76,9 +81,8 @@ const String crisisSafetyReply = '听到这些，我很在意你现在的安全�
 
 /// 保证危机回复一定带「明确无条件」的求助指引：
 /// - [required] 为 false 时原样返回；
-/// - 已足够（有资源 + 明确 + 无条件的犹豫）则原样返回；
-/// - 缺失或只是「有条件地提了一句」则把确定性文案附在末尾
-///   （保留模型那句关怀，补上它没做到的那部分）。
+/// - 模型已说清楚（明确 + 给了资源）→ 原样返回，不重复堆叠；
+/// - 缺失或只是「有条件地提了一句」→ 把确定性文案附在末尾。
 String ensureSafetyGuidance(String reply, {required bool required}) {
   final r = reply.trim();
   if (!required) return r;

@@ -43,6 +43,13 @@ void main() {
       expect(guarded.length, greaterThan(conditional.length));
     });
 
+    test('已有明确指引、但别处夹了条件式措辞 → 仍算达标，且不重复追加', () {
+      const mixed = '请一定立刻拨打 110 或 120。同时你也可以考虑联系心理援助热线 12356。';
+      expect(hasSufficientSafetyGuidance(mixed), isTrue);
+      expect(ensureSafetyGuidance(mixed, required: true), mixed); // 不堆叠
+      expect(usesConditionalSafetyWording(mixed), isTrue); // 但记为观察项
+    });
+
     test('缺「明确」措辞也不算够（可以联系 ≠ 请一定联系）', () {
       expect(hasSufficientSafetyGuidance('你可以联系信任的人，或拨打 12356。'), isFalse);
     });
