@@ -44,11 +44,16 @@ Future<void> main(List<String> args) async {
   final limit = _intArg(args, '--limit') ?? 1000;
   final providerName = _strArg(args, '--provider') ?? 'zhipu';
   final judge = !args.contains('--no-judge');
-  final provider = _providers[providerName];
-  if (provider == null) {
+  final base = _providers[providerName];
+  if (base == null) {
     stderr.writeln('未知服务商：$providerName（可选 ${_providers.keys.join(' / ')}）');
     exit(2);
   }
+  // 可用 --model 覆盖（例如换 glm-4.6 做模型对比）
+  final modelOverride = _strArg(args, '--model');
+  final provider = modelOverride == null
+      ? base
+      : _Provider(base.name, base.url, modelOverride, base.envKey);
   final key = Platform.environment[provider.envKey] ?? '';
   if (key.isEmpty) {
     stderr.writeln('缺少 key：请先设置环境变量 ${provider.envKey}');
@@ -61,38 +66,46 @@ Future<void> main(List<String> args) async {
     stderr.writeln('eval/cases.json 里没有用例');
     exit(2);
   }
-  stdout.writeln('▶ 评测 ${selected.length} 条 · ${provider.name} / ${provider.model}'
+  final repeat = _intArg(args, '--repeat') ?? 1;
+  stdout.writeln('▶ 评测 ${selected.length} 条 × $repeat 轮 · '
+      '${provider.name} / ${provider.model}'
       '${judge ? ' · 含 LLM 评审' : ' · 仅硬性检查'}');
 
+  // 被检对象（模型输出）本身有随机性：单轮分数带噪声，重复多轮才谈得上对比。
   final results = <Map<String, dynamic>>[];
+  final perRunViolations = <int>[];
+  final perRunConcrete = <double>[];
   final sw = Stopwatch()..start();
-  for (var i = 0; i < selected.length; i++) {
-    final c = selected[i];
-    final id = c['id'] as String;
-    final requireSafety =
-        ((c['expect'] as Map?)?['require_safety'] as bool?) ?? false;
-    final avoidEcho =
-        (((c['expect'] as Map?)?['avoid_echo'] as List?) ?? const [])
-            .cast<String>();
+  for (var run = 1; run <= repeat; run++) {
+    var runViolations = 0;
+    final runConcrete = <double>[];
+    for (var i = 0; i < selected.length; i++) {
+      final c = selected[i];
+      final id = c['id'] as String;
+      final requireSafety =
+          ((c['expect'] as Map?)?['require_safety'] as bool?) ?? false;
+      final avoidEcho =
+          (((c['expect'] as Map?)?['avoid_echo'] as List?) ?? const [])
+              .cast<String>();
 
-    // 与 App 同一条管线：危机情境注入强制条款，回复后再做确定性兜底
-    final guarded = needsCrisisGuard(c['user'] as String);
-    final reply = await _call(provider, key, [
-      {
-        'role': 'system',
-        'content': companionSystemPrompt + (guarded ? crisisDirective : ''),
-      },
-      {'role': 'user', 'content': c['user'] as String},
-    ]);
-    final raw = reply.text;
-    final text =
-        raw == null ? null : ensureSafetyGuidance(raw, required: guarded);
-    final violations = text == null
-        ? <ReplyViolation>[]
-        : checkReply(text,
-            requireSafety: requireSafety,
-            maxChars: requireSafety ? 320 : 200,
-            avoidEcho: avoidEcho);
+      // 与 App 同一条管线：危机情境注入强制条款，回复后再做确定性兜底
+      final guarded = needsCrisisGuard(c['user'] as String);
+      final reply = await _call(provider, key, [
+        {
+          'role': 'system',
+          'content': companionSystemPrompt + (guarded ? crisisDirective : ''),
+        },
+        {'role': 'user', 'content': c['user'] as String},
+      ]);
+      final raw = reply.text;
+      final text =
+          raw == null ? null : ensureSafetyGuidance(raw, required: guarded);
+      final violations = text == null
+          ? <ReplyViolation>[]
+          : checkReply(text,
+              requireSafety: requireSafety,
+              maxChars: requireSafety ? 320 : 200,
+              avoidEcho: avoidEcho);
 
     Map<String, dynamic>? scores;
     if (judge && text != null) {
@@ -101,6 +114,7 @@ Future<void> main(List<String> args) async {
 
     results.add({
       'id': id,
+      'run': run,
       'scene': c['scene'],
       'user': c['user'],
       'reply': text,
@@ -122,11 +136,28 @@ Future<void> main(List<String> args) async {
         : violations.isEmpty
             ? 'ok'
             : violations.map((v) => v.code).join(',');
-    stdout.writeln('  [${i + 1}/${selected.length}] $id  ${reply.ms}ms  $flag');
+    if (violations.isNotEmpty) runViolations++;
+    final cv = (scores?['concrete'] as num?)?.toDouble();
+    if (cv != null && !requireSafety) runConcrete.add(cv);
+    if (repeat == 1) {
+      stdout.writeln('  [${i + 1}/${selected.length}] $id  ${reply.ms}ms  $flag');
+    }
+    }
+    perRunViolations.add(runViolations);
+    if (runConcrete.isNotEmpty) {
+      perRunConcrete.add(
+          runConcrete.reduce((a, b) => a + b) / runConcrete.length);
+    }
+    if (repeat > 1) {
+      stdout.writeln('  · 第 $run/$repeat 轮：违规 $runViolations'
+          '${runConcrete.isEmpty ? '' : ' · 非危机 concrete '
+              '${(runConcrete.reduce((a, b) => a + b) / runConcrete.length).toStringAsFixed(2)}'}');
+    }
   }
   sw.stop();
 
-  final report = _render(provider, results, judge, sw.elapsed, selected.length);
+  final report = _render(provider, results, judge, sw.elapsed, selected.length,
+      perRunViolations: perRunViolations, perRunConcrete: perRunConcrete);
   final dir = Directory('eval/results')..createSync(recursive: true);
   final stamp = DateTime.now()
       .toIso8601String()
@@ -237,7 +268,9 @@ class _Report {
 }
 
 _Report _render(_Provider p, List<Map<String, dynamic>> results, bool judge,
-    Duration elapsed, int total) {
+    Duration elapsed, int total,
+    {List<int> perRunViolations = const [],
+    List<double> perRunConcrete = const []}) {
   final done = results.where((r) => r['reply'] != null).toList();
   final fails = results.length - done.length;
   final msList = done.map((r) => r['ms'] as int).toList()..sort();
@@ -254,9 +287,11 @@ _Report _render(_Provider p, List<Map<String, dynamic>> results, bool judge,
       crisisCases.where((r) => r['raw_sufficient_safety'] == true).length;
   final crisisConditional =
       crisisCases.where((r) => r['raw_conditional_safety'] == true).length;
+  // 危机回复按要求不追问细节，单独统计「非危机」的具体化，避免口径混淆
+  final nonCrisis = results.where((r) => r['require_safety'] != true).toList();
 
-  double avgOf(String k) {
-    final vals = results
+  double avgOf(String k, {List<Map<String, dynamic>>? over}) {
+    final vals = (over ?? results)
         .map((r) => (r['scores'] as Map?)?[k])
         .whereType<num>()
         .map((n) => n.toDouble())
@@ -283,6 +318,20 @@ _Report _render(_Provider p, List<Map<String, dynamic>> results, bool judge,
         .length;
     b.writeln('- LLM 评审解析失败：$judgeFails 次（temperature=0，失败重试一次仍失败）');
   }
+  if (perRunViolations.length > 1) {
+    b.writeln('- 重复 ${perRunViolations.length} 轮 · 每轮硬性违规：$perRunViolations'
+        '（被检对象随机，单轮数字带噪声 → 用重复测量，下面的均值为各轮汇总）');
+    if (perRunConcrete.length > 1) {
+      var mn = perRunConcrete.first, mx = perRunConcrete.first, sum = 0.0;
+      for (final v in perRunConcrete) {
+        if (v < mn) mn = v;
+        if (v > mx) mx = v;
+        sum += v;
+      }
+      b.writeln('- 非危机 concrete：均值 ${(sum / perRunConcrete.length).toStringAsFixed(2)}'
+          '（区间 ${mn.toStringAsFixed(2)}–${mx.toStringAsFixed(2)}）');
+    }
+  }
   b.writeln();
 
   if (judge) {
@@ -292,6 +341,10 @@ _Report _render(_Provider p, List<Map<String, dynamic>> results, bool judge,
       ..writeln('| ${_judgeDims.map((k) => _judgeLabels[k]).join(' | ')} |')
       ..writeln('|${'---|' * _judgeDims.length}')
       ..writeln('| ${_judgeDims.map((k) => avgOf(k).toStringAsFixed(2)).join(' | ')} |')
+      ..writeln()
+      ..writeln('- 非危机用例「具体化」均分：'
+          '${avgOf('concrete', over: nonCrisis).toStringAsFixed(2)}'
+          '（危机回复按要求不追问细节，会拉低整体，故单列）')
       ..writeln();
   }
 
@@ -337,7 +390,8 @@ _Report _render(_Provider p, List<Map<String, dynamic>> results, bool judge,
 
   final aggregateLine = '汇总：$violated/${results.length} 条硬性违规 · '
       '平均 ${avgMs.toStringAsFixed(0)}ms · 失败 $fails'
-      '${judge ? ' · 评审均分 ${_judgeDims.map((k) => '$k ${avgOf(k).toStringAsFixed(2)}').join(' / ')}' : ''}';
+      '${judge ? ' · 评审均分 ${_judgeDims.map((k) => '$k ${avgOf(k).toStringAsFixed(2)}').join(' / ')}'
+          ' · 非危机 concrete ${avgOf('concrete', over: nonCrisis).toStringAsFixed(2)}' : ''}';
 
   final row = '| ${DateTime.now().toIso8601String().substring(0, 10)} '
       '| ${p.model} | ${results.length} | $violated | '
@@ -357,6 +411,7 @@ _Report _render(_Provider p, List<Map<String, dynamic>> results, bool judge,
       'tokens': tokens,
       if (judge)
         for (final k in _judgeDims) k: avgOf(k),
+      if (judge) 'concrete_non_crisis': avgOf('concrete', over: nonCrisis),
     },
   );
 }
