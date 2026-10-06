@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:xinjing/persona/ab_stats.dart';
 import 'package:xinjing/persona/companion_manual.dart';
 import 'package:xinjing/persona/crisis_guard.dart';
 import 'package:xinjing/persona/reply_checks.dart';
@@ -66,9 +67,26 @@ Future<void> main(List<String> args) async {
     stderr.writeln('eval/cases.json 里没有用例');
     exit(2);
   }
+  // --ab A,B：同会话内交错跑两个手册变体，用配对差抵消时段漂移
+  final abArg = _strArg(args, '--ab');
+  final abVariants = abArg == null
+      ? <String>[]
+      : abArg.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+  for (final v in abVariants) {
+    if (!manualVariants.containsKey(v)) {
+      stderr.writeln('未知手册变体：$v（可选 ${manualVariants.keys.join(' / ')}）');
+      exit(2);
+    }
+  }
+  if (abVariants.isNotEmpty && abVariants.length != 2) {
+    stderr.writeln('--ab 需要两个变体，例如 --ab manual,baseline');
+    exit(2);
+  }
+
   final repeat = _intArg(args, '--repeat') ?? 1;
   stdout.writeln('▶ 评测 ${selected.length} 条 × $repeat 轮 · '
       '${provider.name} / ${provider.model}'
+      '${abVariants.isEmpty ? '' : ' · A/B：${abVariants.join(' vs ')}'}'
       '${judge ? ' · 含 LLM 评审' : ' · 仅硬性检查'}');
 
   // 被检对象（模型输出）本身有随机性：单轮分数带噪声，重复多轮才谈得上对比。
@@ -79,6 +97,12 @@ Future<void> main(List<String> args) async {
   for (var run = 1; run <= repeat; run++) {
     var runViolations = 0;
     final runConcrete = <double>[];
+    // A/B 模式每轮交替顺序（A,B / B,A），抵消顺序与时段影响
+    final order = abVariants.length == 2
+        ? (run.isEven ? [abVariants[1], abVariants[0]] : abVariants)
+        : const ['manual'];
+    for (final variant in order) {
+    final systemPrompt = manualVariants[variant] ?? companionSystemPrompt;
     for (var i = 0; i < selected.length; i++) {
       final c = selected[i];
       final id = c['id'] as String;
@@ -93,7 +117,7 @@ Future<void> main(List<String> args) async {
       final reply = await _call(provider, key, [
         {
           'role': 'system',
-          'content': companionSystemPrompt + (guarded ? crisisDirective : ''),
+          'content': systemPrompt + (guarded ? crisisDirective : ''),
         },
         {'role': 'user', 'content': c['user'] as String},
       ]);
@@ -115,6 +139,7 @@ Future<void> main(List<String> args) async {
     results.add({
       'id': id,
       'run': run,
+      'variant': variant,
       'scene': c['scene'],
       'user': c['user'],
       'reply': text,
@@ -143,6 +168,7 @@ Future<void> main(List<String> args) async {
       stdout.writeln('  [${i + 1}/${selected.length}] $id  ${reply.ms}ms  $flag');
     }
     }
+    }
     perRunViolations.add(runViolations);
     if (runConcrete.isNotEmpty) {
       perRunConcrete.add(
@@ -157,7 +183,9 @@ Future<void> main(List<String> args) async {
   sw.stop();
 
   final report = _render(provider, results, judge, sw.elapsed, selected.length,
-      perRunViolations: perRunViolations, perRunConcrete: perRunConcrete);
+      perRunViolations: perRunViolations,
+      perRunConcrete: perRunConcrete,
+      abVariants: abVariants);
   final dir = Directory('eval/results')..createSync(recursive: true);
   final stamp = DateTime.now()
       .toIso8601String()
@@ -270,7 +298,8 @@ class _Report {
 _Report _render(_Provider p, List<Map<String, dynamic>> results, bool judge,
     Duration elapsed, int total,
     {List<int> perRunViolations = const [],
-    List<double> perRunConcrete = const []}) {
+    List<double> perRunConcrete = const [],
+    List<String> abVariants = const []}) {
   final done = results.where((r) => r['reply'] != null).toList();
   final fails = results.length - done.length;
   final msList = done.map((r) => r['ms'] as int).toList()..sort();
@@ -333,6 +362,54 @@ _Report _render(_Provider p, List<Map<String, dynamic>> results, bool judge,
     }
   }
   b.writeln();
+
+  // A/B 配对对照：同会话交错跑两个变体，差值才能归因到手册改动本身
+  if (abVariants.length == 2 && judge) {
+    final aV = abVariants[0], bV = abVariants[1];
+    Map<String, double> perCase(String variant, String dim) {
+      final acc = <String, List<double>>{};
+      for (final r in results) {
+        if ((r['variant'] as String? ?? 'manual') != variant) continue;
+        final s = (r['scores'] as Map?)?[dim] as num?;
+        if (s == null) continue;
+        acc.putIfAbsent(r['id'] as String, () => []).add(s.toDouble());
+      }
+      return {
+        for (final e in acc.entries)
+          e.key: e.value.reduce((x, y) => x + y) / e.value.length,
+      };
+    }
+
+    int countOf(String variant) => results
+        .where((r) => (r['variant'] as String? ?? 'manual') == variant)
+        .length;
+    int violationsOf(String variant) => results
+        .where((r) =>
+            (r['variant'] as String? ?? 'manual') == variant &&
+            (r['violations'] as List).isNotEmpty)
+        .length;
+
+    b
+      ..writeln('## A/B 对照（同会话交错 · 配对比较）')
+      ..writeln()
+      ..writeln('- A = `$aV` · B = `$bV` · 每轮交替顺序（A,B / B,A）；'
+          '配对差 = A − B（正 = A 更好），按用例配对以抵消时段漂移')
+      ..writeln()
+      ..writeln('| 维度 | $aV | $bV | 配对差 | A 更好 / B 更好 / 持平 |')
+      ..writeln('|---|---|---|---|---|');
+    for (final d in _judgeDims) {
+      final st = pairedStats(perCase(aV, d), perCase(bV, d));
+      b.writeln('| ${_judgeLabels[d]} | ${st.meanA.toStringAsFixed(2)} | '
+          '${st.meanB.toStringAsFixed(2)} | '
+          '${st.meanDelta >= 0 ? '+' : ''}${st.meanDelta.toStringAsFixed(2)} | '
+          '${st.improved} / ${st.worsened} / ${st.tied} |');
+    }
+    b
+      ..writeln()
+      ..writeln('- 硬性违规：`$aV` ${violationsOf(aV)}/${countOf(aV)} · '
+          '`$bV` ${violationsOf(bV)}/${countOf(bV)}')
+      ..writeln();
+  }
 
   if (judge) {
     b
